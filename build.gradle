@@ -55,6 +55,7 @@ dependencies {
 
     // libs included in the final jar
     api group: 'com.google.code.gson', name: 'gson', version: '2.10.1'
+    api group: 'io.weaviate', name: 'client', version: '4.2.0'
 }
 
 
