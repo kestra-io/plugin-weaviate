@@ -11,7 +11,6 @@ import lombok.*;
 import lombok.experimental.SuperBuilder;
 
 import javax.validation.constraints.NotBlank;
-import java.util.List;
 
 @SuperBuilder
 @ToString
@@ -21,13 +20,13 @@ import java.util.List;
 public abstract class WeaviateConnection extends Task implements WeaviateConnectionInterface {
 
     @Builder.Default
-    public String scheme = "https";
+    private String scheme = "https";
 
     @NotBlank
-    public String host;
+    private String host;
 
     @NotBlank
-    public String apiKey;
+    private String apiKey;
 
     protected WeaviateClient connect(RunContext context) throws AuthException, IllegalVariableEvaluationException {
         Config config = new Config(scheme, host);
