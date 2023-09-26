@@ -45,18 +45,24 @@ public class BatchCreate extends WeaviateConnection implements RunnableTask<Batc
 
         Result<ObjectGetResponse[]> result = client.batch().objectsBatcher().withObjects(objects.toArray(WeaviateObject[]::new)).run();
 
-        ObjectGetResponse[] responses = result.getResult();
+        List<ObjectGetResponse> responses = List.of(result.getResult());
 
-        return null;
+        return Output.builder()
+            .className(responses.stream().map(ObjectGetResponse::getClassName).toList())
+            .properties(responses.stream().map(ObjectGetResponse::getProperties).toList())
+            .createdCounts(responses.size())
+            .build();
     }
 
     @Getter
     @Builder
     public static class Output implements io.kestra.core.models.tasks.Output {
 
-        private String className;
+        private List<String> className;
 
-        protected Map<String, Object> properties;
+        private List<Map<String, Object>> properties;
+
+        private long createdCounts;
 
     }
 }
