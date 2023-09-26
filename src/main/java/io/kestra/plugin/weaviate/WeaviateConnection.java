@@ -29,9 +29,12 @@ public abstract class WeaviateConnection extends Task implements WeaviateConnect
     private String apiKey;
 
     protected WeaviateClient connect(RunContext context) throws AuthException, IllegalVariableEvaluationException {
-        Config config = new Config(scheme, host);
+        Config config = new Config(context.render(scheme), context.render(host));
+
+        if (apiKey == null) {
+            return new WeaviateClient(config);
+        }
 
         return WeaviateAuthClient.apiKey(config, context.render(apiKey));
     }
-
 }

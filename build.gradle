@@ -24,7 +24,7 @@ sourceCompatibility = 17
 targetCompatibility = 17
 
 group "io.kestra.plugin"
-description 'Plugin template for Kestra'
+description 'Plugin Weaviate for Kestra'
 
 tasks.withType(JavaCompile) {
     options.encoding = "UTF-8"
@@ -111,7 +111,7 @@ jar {
     manifest {
         attributes(
                 "X-Kestra-Name": project.name,
-                "X-Kestra-Title": "Template",
+                "X-Kestra-Title": "Weaviate",
                 "X-Kestra-Group": project.group + ".templates",
                 "X-Kestra-Description": project.description,
                 "X-Kestra-Version": project.version
