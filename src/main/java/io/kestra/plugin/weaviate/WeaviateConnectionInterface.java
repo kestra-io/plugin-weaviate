@@ -19,7 +19,8 @@ public interface WeaviateConnectionInterface {
     String getHost();
 
     @Schema(
-        title = "Connection api key"
+        title = "Connection api key",
+        description = "If not provided, the anonymous authentication scheme will be used"
     )
     @NotBlank
     String getApiKey();

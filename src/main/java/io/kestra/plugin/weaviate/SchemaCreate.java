@@ -7,27 +7,45 @@ import io.kestra.core.runners.RunContext;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.weaviate.client.WeaviateClient;
 import io.weaviate.client.base.Result;
+import io.weaviate.client.base.WeaviateErrorMessage;
 import io.weaviate.client.v1.schema.model.Property;
 import io.weaviate.client.v1.schema.model.WeaviateClass;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
 
+import javax.validation.constraints.NotBlank;
+import java.io.IOException;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 @SuperBuilder
 @ToString
 @Getter
 @EqualsAndHashCode
 @NoArgsConstructor
-@Schema(title = "Create class schema in Weaviate database.")
-@Plugin(examples = {
-    @Example(title = "Send schema creation request to a Weaviate database", code = {
-
-    })
-})
+@Schema(
+    title = "Create class schema in Weaviate database."
+)
+@Plugin(
+    examples = {
+        @Example(
+            title = "Send schema creation request to a Weaviate database",
+            code = {
+                "host: localhost:8080",
+                "apiKey: some_api_key",
+                "className: WeaviateObject",
+                "parameters:\n" +
+                "    fieldName:\n" +
+                "       -text",
+                "       -string"
+            }
+        )
+    }
+)
 public class SchemaCreate extends WeaviateConnection implements RunnableTask<SchemaCreate.Output>, SchemaCreateInterface {
 
+    @NotBlank
     protected String className;
 
     protected Map<String, List<String>> parameters;
@@ -49,7 +67,16 @@ public class SchemaCreate extends WeaviateConnection implements RunnableTask<Sch
             .withClass(weaviateClass)
             .run();
 
-        return Output.builder().success(result.getResult()).hasErrors(result.hasErrors()).build();
+
+        if (result.hasErrors()) {
+            String message = result.getError().getMessages().stream()
+                .map(WeaviateErrorMessage::getMessage)
+                .collect(Collectors.joining(", "));
+
+            throw new IOException(message);
+        }
+
+        return Output.builder().success(result.getResult()).build();
     }
 
     private static Property buildProperty(Map.Entry<String, List<String>> entry) {
@@ -60,9 +87,10 @@ public class SchemaCreate extends WeaviateConnection implements RunnableTask<Sch
     @Builder
     public static class Output implements io.kestra.core.models.tasks.Output {
 
+        @Schema(
+            title = "Indicates whether the schema creation was successful"
+        )
         private Boolean success;
-
-        private Boolean hasErrors;
 
     }
 }
