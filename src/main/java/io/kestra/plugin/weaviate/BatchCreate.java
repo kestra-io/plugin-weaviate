@@ -23,7 +23,8 @@ import java.util.stream.Collectors;
 @EqualsAndHashCode
 @NoArgsConstructor
 @Schema(
-    title = "Batch create request to Weaviate database."
+    title = "Batch create request to Weaviate database.",
+    description = "Create batch request to Weaviate database. If schema does not exist, schema will automatically be created"
 )
 @Plugin(
     examples = {
