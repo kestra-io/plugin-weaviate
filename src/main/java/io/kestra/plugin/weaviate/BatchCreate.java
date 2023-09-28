@@ -161,7 +161,8 @@ public class BatchCreate extends WeaviateConnection implements RunnableTask<Batc
         private List<String> className;
 
         @Schema(
-            title = "URI of the created objects"
+            title = "The URI of stored data",
+            description = "Content of file will be the created objects data"
         )
         private URI uri;
 

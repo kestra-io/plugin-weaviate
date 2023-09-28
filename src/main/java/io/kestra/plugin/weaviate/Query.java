@@ -39,15 +39,15 @@ import java.util.stream.Collectors;
                 "apiKey: some_api_key",
                 "query: " + """
                        {
-  Get {
-    ObjectClassName (
-      limit: 50
-    ) {
-      title,
-      description
-    }
-  }
-}
+                          Get {
+                            ObjectClassName (
+                              limit: 50
+                            ) {
+                              title,
+                              description
+                            }
+                          }
+                        }
                        """
             }
         )

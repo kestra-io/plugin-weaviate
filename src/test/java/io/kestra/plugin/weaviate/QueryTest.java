@@ -31,14 +31,14 @@ public class QueryTest {
     public static final String HOST = "localhost:8080";
     private static final String QUERY = """
                        {
-  Get {
-    QueryTest (
-      limit: 50
-    ) {
-      title
-    }
-  }
-}
+                          Get {
+                            QueryTest (
+                              limit: 50
+                            ) {
+                              title
+                            }
+                          }
+                        }
                        """;
 
     @Inject
@@ -52,11 +52,11 @@ public class QueryTest {
         return storageInterface.put(
             new URI(path),
             new FileInputStream(Objects.requireNonNull(resource).getFile())
-        );
+                                   );
     }
 
     @Test
-    public void testQuery_Without_Internal_Storage() throws Exception {
+    public void testQueryWithoutInternalStorage() throws Exception {
         RunContext runContext = runContextFactory.of();
 
         String className = "QueryTest";
@@ -101,7 +101,7 @@ public class QueryTest {
     }
 
     @Test
-    public void testQuery_With_Internal_Storage() throws Exception {
+    public void testQueryWithInternalStorage() throws Exception {
         RunContext runContext = runContextFactory.of();
 
         String className = "QueryTest";
@@ -153,7 +153,7 @@ public class QueryTest {
 
 
     @Test
-    public void testQuery_From_URI() throws Exception {
+    public void testQueryFromURI() throws Exception {
         RunContext runContext = runContextFactory.of();
 
         String prefix = IdUtils.create();

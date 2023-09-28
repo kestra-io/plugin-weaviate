@@ -54,7 +54,7 @@ public class SchemaCreate extends WeaviateConnection implements RunnableTask<Sch
     protected String className;
 
     @Schema(
-        title = "Fields which will be store data in class",
+        title = "Fields to add to the class",
         description = "Requires specified field name and list of data type that will be stored in this field"
     )
     @PluginProperty(dynamic = true)
