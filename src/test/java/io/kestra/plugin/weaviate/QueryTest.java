@@ -1,9 +1,12 @@
 package io.kestra.plugin.weaviate;
 
+import com.google.common.io.CharStreams;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.runners.RunContextFactory;
 import io.kestra.core.serializers.JacksonMapper;
 import io.kestra.core.storages.StorageInterface;
+import io.kestra.core.utils.IdUtils;
+import io.kestra.storage.local.LocalStorage;
 import io.micronaut.test.extensions.junit5.annotation.MicronautTest;
 import jakarta.inject.Inject;
 import org.apache.commons.io.Charsets;
@@ -11,12 +14,17 @@ import org.apache.commons.io.IOUtils;
 import org.hamcrest.Matchers;
 import org.junit.jupiter.api.Test;
 
-import java.nio.charset.Charset;
+import java.io.FileInputStream;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.net.URI;
+import java.net.URL;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 
 import static org.hamcrest.MatcherAssert.assertThat;
-import static org.hamcrest.Matchers.*;
+import static org.hamcrest.Matchers.is;
 
 @MicronautTest
 public class QueryTest {
@@ -41,6 +49,14 @@ public class QueryTest {
     @Inject
     private StorageInterface storageInterface;
 
+
+    private URI putFile(URL resource, String path) throws Exception {
+        return storageInterface.put(
+            new URI(path),
+            new FileInputStream(Objects.requireNonNull(resource).getFile())
+        );
+    }
+
     @Test
     public void testQuery_Without_Internal_Storage() throws Exception {
         RunContext runContext = runContextFactory.of();
@@ -52,11 +68,11 @@ public class QueryTest {
             .scheme(SCHEME)
             .host(HOST)
             .className(className)
-            .parameters(parameters)
+            .objects(parameters)
             .build()
             .run(runContext);
 
-        assertThat(batchOutput.getCreatedCounts(), greaterThanOrEqualTo(1L));
+        assertThat(batchOutput.getCreatedCounts(), is(1));
 
         assertThat(batchOutput.getClassName(), Matchers.hasItem(className));
         assertThat(batchOutput.getProperties(), is(parameters));
@@ -68,7 +84,7 @@ public class QueryTest {
             .build()
             .run(runContext);
 
-        assertThat(queryOutput.getSize(), greaterThanOrEqualTo(1));
+        assertThat(queryOutput.getSize(), is(1));
 
         assertThat(parameters, Matchers.containsInAnyOrder(((List<Object>) queryOutput.getData().get(className)).get(0)));
 
@@ -83,7 +99,7 @@ public class QueryTest {
         assertThat(true, is(deleteOutput.getSuccess()));
 
         assertThat(className, is(deleteOutput.getClassName()));
-        assertThat(deleteOutput.getDeletedCounts(), greaterThanOrEqualTo(1L));
+        assertThat(deleteOutput.getDeletedCounts(), is(1L));
     }
 
     @Test
@@ -97,11 +113,11 @@ public class QueryTest {
             .scheme(SCHEME)
             .host(HOST)
             .className(className)
-            .parameters(parameters)
+            .objects(parameters)
             .build()
             .run(runContext);
 
-        assertThat(batchOutput.getCreatedCounts(), greaterThanOrEqualTo(1L));
+        assertThat(batchOutput.getCreatedCounts(), is(1));
 
         assertThat(batchOutput.getClassName(), Matchers.hasItem(className));
         assertThat(batchOutput.getProperties(), is(parameters));
@@ -114,7 +130,7 @@ public class QueryTest {
             .build()
             .run(runContext);
 
-        assertThat(queryOutput.getSize(), greaterThanOrEqualTo(1));
+        assertThat(queryOutput.getSize(), is(1));
 
         assertThat(parameters, Matchers.containsInAnyOrder(((List<Object>) queryOutput.getData().get(className)).get(0)));
 
@@ -133,6 +149,62 @@ public class QueryTest {
         assertThat(true, is(deleteOutput.getSuccess()));
 
         assertThat(className, is(deleteOutput.getClassName()));
-        assertThat(deleteOutput.getDeletedCounts(), greaterThanOrEqualTo(1L));
+        assertThat(deleteOutput.getDeletedCounts(), is(1L));
+    }
+
+
+
+    @Test
+    public void testQuery_From_URI() throws Exception {
+        RunContext runContext = runContextFactory.of();
+
+        String prefix = IdUtils.create();
+
+        URL resource = QueryTest.class.getClassLoader().getResource("flows/query.yml");
+        String content = CharStreams.toString(new InputStreamReader(new FileInputStream(Objects.requireNonNull(resource)
+            .getFile())));
+
+        URI uri = this.putFile(resource, "/" + prefix + "/storage/query.yml");
+
+        String className = "QueryTest";
+        List<Map<String, Object>> parameters = List.of(JacksonMapper.ofYaml().readValue(content, Map.class));
+
+        BatchCreate.Output batchOutput = BatchCreate.builder()
+            .scheme(SCHEME)
+            .host(HOST)
+            .className(className)
+            .objects(uri.getPath())
+            .storageInterface(storageInterface)
+            .build()
+            .run(runContext);
+
+        assertThat(batchOutput.getCreatedCounts(), is(1));
+
+        assertThat(batchOutput.getClassName(), Matchers.hasItem(className));
+        assertThat(batchOutput.getProperties(), is(parameters));
+
+        RawQuery.Output queryOutput = RawQuery.builder()
+            .scheme(SCHEME)
+            .host(HOST)
+            .query(QUERY)
+            .build()
+            .run(runContext);
+
+        assertThat(queryOutput.getSize(), is(1));
+
+        assertThat(parameters, Matchers.contains(((List<Object>) queryOutput.getData().get(className)).get(0)));
+
+        Delete.Output deleteOutput = Delete.builder()
+            .scheme(SCHEME)
+            .host(HOST)
+            .className(className)
+            .properties(Map.of("title", parameters.get(0).get("title").toString()))
+            .build()
+            .run(runContext);
+
+        assertThat(true, is(deleteOutput.getSuccess()));
+
+        assertThat(className, is(deleteOutput.getClassName()));
+        assertThat(deleteOutput.getDeletedCounts(), is(1L));
     }
 }

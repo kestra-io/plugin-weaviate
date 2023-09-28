@@ -3,6 +3,7 @@ package io.kestra.plugin.weaviate;
 import com.google.gson.internal.LinkedTreeMap;
 import io.kestra.core.models.annotations.Example;
 import io.kestra.core.models.annotations.Plugin;
+import io.kestra.core.models.annotations.PluginProperty;
 import io.kestra.core.models.tasks.RunnableTask;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.serializers.FileSerde;
@@ -41,11 +42,20 @@ import java.util.stream.Collectors;
         )
     }
 )
-public class RawQuery extends WeaviateConnection implements RunnableTask<RawQuery.Output>, RawQueryInterface {
+public class RawQuery extends WeaviateConnection implements RunnableTask<RawQuery.Output> {
 
+    @Schema(
+        title = "GraphQL query which will be executed"
+    )
+    @NotBlank
+    @PluginProperty(dynamic = true)
     @NotBlank
     protected String query;
 
+    @Schema(
+        title = "Whether store data in internal storage. Default is falses"
+    )
+    @PluginProperty
     @Builder.Default
     protected boolean store = false;
 
@@ -53,7 +63,10 @@ public class RawQuery extends WeaviateConnection implements RunnableTask<RawQuer
     public RawQuery.Output run(RunContext runContext) throws Exception {
         WeaviateClient client = connect(runContext);
 
-        Result<GraphQLResponse> result = client.graphQL().raw().withQuery(runContext.render(query)).run();
+        Result<GraphQLResponse> result = client.graphQL()
+            .raw()
+            .withQuery(runContext.render(query))
+            .run();
 
         if (result.hasErrors()) {
             String message = result.getError().getMessages().stream()
@@ -80,7 +93,7 @@ public class RawQuery extends WeaviateConnection implements RunnableTask<RawQuer
         try (BufferedWriter fileWriter = new BufferedWriter(new FileWriter(tempFile));
              OutputStream outputStream = new FileOutputStream(tempFile)) {
 
-            for (var row : data.entrySet()) {
+            for (Map.Entry<String, Object> row : data.entrySet()) {
                 FileSerde.write(outputStream, row);
             }
 
@@ -91,11 +104,12 @@ public class RawQuery extends WeaviateConnection implements RunnableTask<RawQuer
     }
 
     private Map<String, Object> extractData(Result<GraphQLResponse> result) {
-        String responseKey = "Get";
-
         Object data = result.getResult().getData();
         LinkedTreeMap<String, Object> dataMap = (LinkedTreeMap<String, Object>) data;
-        return (Map<String, Object>) dataMap.getOrDefault(responseKey, new LinkedHashMap<>());
+        return (Map<String, Object>) dataMap.values().stream()
+            .map(object -> (Map<String, Object>) object)
+            .flatMap(stringObjectMap -> stringObjectMap.entrySet().stream())
+            .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
     }
 
     @Getter

@@ -2,6 +2,7 @@ package io.kestra.plugin.weaviate;
 
 import io.kestra.core.models.annotations.Example;
 import io.kestra.core.models.annotations.Plugin;
+import io.kestra.core.models.annotations.PluginProperty;
 import io.kestra.core.models.tasks.RunnableTask;
 import io.kestra.core.runners.RunContext;
 import io.swagger.v3.oas.annotations.media.Schema;
@@ -37,17 +38,26 @@ import java.util.stream.Collectors;
                 "className: WeaviateObject",
                 "parameters:\n" +
                 "    fieldName:\n" +
-                "       -text",
-                "       -string"
+                "       - text",
+                "       - string"
             }
         )
     }
 )
-public class SchemaCreate extends WeaviateConnection implements RunnableTask<SchemaCreate.Output>, SchemaCreateInterface {
+public class SchemaCreate extends WeaviateConnection implements RunnableTask<SchemaCreate.Output> {
 
+    @Schema(
+        title = "Class name where your data will be stored"
+    )
+    @PluginProperty(dynamic = true)
     @NotBlank
     protected String className;
 
+    @Schema(
+        title = "Fields which will be store data in class",
+        description = "Requires specified field name and list of data type that will be stored in this field"
+    )
+    @PluginProperty(dynamic = true)
     protected Map<String, List<String>> parameters;
 
     @Override

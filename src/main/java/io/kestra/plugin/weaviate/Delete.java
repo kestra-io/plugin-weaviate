@@ -2,6 +2,7 @@ package io.kestra.plugin.weaviate;
 
 import io.kestra.core.models.annotations.Example;
 import io.kestra.core.models.annotations.Plugin;
+import io.kestra.core.models.annotations.PluginProperty;
 import io.kestra.core.models.tasks.RunnableTask;
 import io.kestra.core.runners.RunContext;
 import io.swagger.v3.oas.annotations.media.Schema;
@@ -18,6 +19,7 @@ import lombok.experimental.SuperBuilder;
 import javax.validation.constraints.NotBlank;
 import javax.validation.constraints.NotNull;
 import java.io.IOException;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -48,8 +50,10 @@ import java.util.stream.Stream;
 public class Delete extends WeaviateConnection implements RunnableTask<Delete.Output> {
 
     @NotBlank
+    @PluginProperty(dynamic = true)
     protected String className;
 
+    @PluginProperty(dynamic = true)
     protected String id;
 
     protected Map<String, String> properties;
@@ -57,15 +61,19 @@ public class Delete extends WeaviateConnection implements RunnableTask<Delete.Ou
     @Override
     public Delete.Output run(RunContext runContext) throws Exception {
         WeaviateClient client = connect(runContext);
+        String renderedClassName = runContext.render(className);
 
         if (id != null) {
             Result<Boolean> result = client.data()
                 .deleter()
-                .withClassName(className)
+                .withClassName(renderedClassName)
                 .withID(id)
                 .run();
 
-            return Output.builder().className(className).success(result.getResult()).build();
+            return Output.builder()
+                .className(renderedClassName)
+                .success(result.getResult())
+                .build();
         }
 
         if (properties == null) {
@@ -81,7 +89,7 @@ public class Delete extends WeaviateConnection implements RunnableTask<Delete.Ou
         Result<BatchDeleteResponse> result = client.batch()
             .objectsBatchDeleter()
             .withOutput(BatchDeleteOutput.VERBOSE)
-            .withClassName(className)
+            .withClassName(renderedClassName)
             .withWhere(filter)
             .run();
 
@@ -96,10 +104,10 @@ public class Delete extends WeaviateConnection implements RunnableTask<Delete.Ou
         BatchDeleteResponse response = result.getResult();
 
         return Output.builder()
-            .className(className)
+            .className(renderedClassName)
             .success(!result.hasErrors())
             .deletedCounts(response.getResults().getSuccessful())
-            .ids(Stream.of(response.getResults().getObjects()).map(BatchDeleteResponse.ResultObject::getId).toList())
+            .ids(Arrays.stream(response.getResults().getObjects()).map(BatchDeleteResponse.ResultObject::getId).toList())
             .build();
     }
 

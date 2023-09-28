@@ -2,8 +2,9 @@ version: '3.4'
 services:
   weaviate:
     image: semitechnologies/weaviate:1.21.3
+    container_name: weaviate
     ports:
-    - 8080:8080
+      - 8080:8080
     restart: on-failure
     environment:
       QUERY_DEFAULTS_LIMIT: 25
@@ -11,3 +12,9 @@ services:
       PERSISTENCE_DATA_PATH: '/var/lib/weaviate'
       DEFAULT_VECTORIZER_MODULE: 'none'
       CLUSTER_HOSTNAME: 'node1'
+    networks:
+      - weaviate-network
+
+networks:
+  default: {}
+  weaviate-network: {}
