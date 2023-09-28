@@ -74,6 +74,7 @@ public class BatchCreate extends WeaviateConnection implements RunnableTask<Batc
     @Override
     public BatchCreate.Output run(RunContext runContext) throws Exception {
         WeaviateClient client = connect(runContext);
+        Optional<URI> uri = Optional.empty();
 
         List<WeaviateObject> weaviateObjects = new ArrayList<>();
 
@@ -98,8 +99,8 @@ public class BatchCreate extends WeaviateConnection implements RunnableTask<Batc
         }
 
         if (objects instanceof String) {
-            URI uri = URI.create((String) objects);
-            String outputFileContent = IOUtils.toString(storageInterface.get(uri), Charsets.UTF_8);
+            uri = Optional.of(URI.create((String) objects));
+            String outputFileContent = IOUtils.toString(storageInterface.get(uri.get()), Charsets.UTF_8);
             Map parameters = JacksonMapper.ofYaml().readValue(outputFileContent, Map.class);
 
             WeaviateObject weaviateObject = WeaviateObject.builder()
@@ -128,7 +129,7 @@ public class BatchCreate extends WeaviateConnection implements RunnableTask<Batc
         return Output.builder()
             .className(Arrays.stream(result.getResult()).map(ObjectGetResponse::getClassName).toList())
             .properties(Arrays.stream(result.getResult()).map(ObjectGetResponse::getProperties).toList())
-            .uri(store(responses, runContext))
+            .uri(uri.orElse(store(responses, runContext)))
             .createdCounts(result.getResult().length)
             .build();
     }

@@ -20,7 +20,6 @@ import java.net.URL;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.UUID;
 
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.is;
@@ -47,7 +46,6 @@ public class QueryTest {
 
     @Inject
     private StorageInterface storageInterface;
-
 
     private URI putFile(URL resource, String path) throws Exception {
         return storageInterface.put(
