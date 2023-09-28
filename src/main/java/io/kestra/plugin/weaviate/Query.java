@@ -18,7 +18,6 @@ import lombok.experimental.SuperBuilder;
 import javax.validation.constraints.NotBlank;
 import java.io.*;
 import java.net.URI;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -54,7 +53,7 @@ import java.util.stream.Collectors;
         )
     }
 )
-public class RawQuery extends WeaviateConnection implements RunnableTask<RawQuery.Output> {
+public class Query extends WeaviateConnection implements RunnableTask<Query.Output> {
 
     @Schema(
         title = "GraphQL query which will be executed"
@@ -72,7 +71,7 @@ public class RawQuery extends WeaviateConnection implements RunnableTask<RawQuer
     protected boolean store = false;
 
     @Override
-    public RawQuery.Output run(RunContext runContext) throws Exception {
+    public Query.Output run(RunContext runContext) throws Exception {
         WeaviateClient client = connect(runContext);
 
         Result<GraphQLResponse> result = client.graphQL()

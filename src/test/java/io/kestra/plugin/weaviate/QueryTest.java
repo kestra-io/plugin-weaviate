@@ -75,7 +75,7 @@ public class QueryTest {
         assertThat(batchOutput.getClassName(), Matchers.hasItem(className));
         assertThat(batchOutput.getProperties(), is(parameters));
 
-        RawQuery.Output queryOutput = RawQuery.builder()
+        Query.Output queryOutput = Query.builder()
             .scheme(SCHEME)
             .host(HOST)
             .query(QUERY)
@@ -120,7 +120,7 @@ public class QueryTest {
         assertThat(batchOutput.getClassName(), Matchers.hasItem(className));
         assertThat(batchOutput.getProperties(), is(parameters));
 
-        RawQuery.Output queryOutput = RawQuery.builder()
+        Query.Output queryOutput = Query.builder()
             .scheme(SCHEME)
             .host(HOST)
             .query(QUERY)
@@ -181,7 +181,7 @@ public class QueryTest {
         assertThat(batchOutput.getClassName(), Matchers.hasItem(className));
         assertThat(batchOutput.getProperties(), is(parameters));
 
-        RawQuery.Output queryOutput = RawQuery.builder()
+        Query.Output queryOutput = Query.builder()
             .scheme(SCHEME)
             .host(HOST)
             .query(QUERY)
