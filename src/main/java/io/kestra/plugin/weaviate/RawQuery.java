@@ -34,10 +34,22 @@ import java.util.stream.Collectors;
 @Plugin(
     examples = {
         @Example(
-            title = "Send a GraphQL raw query request to a Weaviate database, which allows you to retrieve data from the database",
+            title = "Send a GraphQL query request to a Weaviate database, which allows you to retrieve data from the database",
             code = {
                 "host: localhost:8080",
-                "apiKey: some_api_key"
+                "apiKey: some_api_key",
+                "query: " + """
+                       {
+  Get {
+    ObjectClassName (
+      limit: 50
+    ) {
+      title,
+      description
+    }
+  }
+}
+                       """
             }
         )
     }
@@ -83,7 +95,7 @@ public class RawQuery extends WeaviateConnection implements RunnableTask<RawQuer
             outputBuilder.uri(store(data, runContext));
         }
 
-        int size = data.values().stream().map(object -> (List<Object>) object).findAny().map(List::size).orElse(0);
+        int size = (int) data.values().stream().flatMap(object -> ((List<Object>) object).stream()).count();
 
         return outputBuilder.size(size).build();
     }
