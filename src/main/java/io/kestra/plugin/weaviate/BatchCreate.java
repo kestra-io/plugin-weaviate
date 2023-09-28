@@ -81,6 +81,7 @@ public class BatchCreate extends WeaviateConnection implements RunnableTask<Batc
             if (!objectList.isEmpty() && objectList.get(0) instanceof Map<?,?>) {
                 objectList.stream()
                     .map(param -> WeaviateObject.builder()
+                        .id(UUID.randomUUID().toString())
                         .className(className)
                         .properties((Map<String, Object>) param)
                         .build())
@@ -89,6 +90,7 @@ public class BatchCreate extends WeaviateConnection implements RunnableTask<Batc
         } else if (objects instanceof Map[]) {
             Arrays.stream((Map<String, Object>[]) objects)
                 .map(param -> WeaviateObject.builder()
+                    .id(UUID.randomUUID().toString())
                     .className(className)
                     .properties(param)
                     .build())
@@ -101,6 +103,7 @@ public class BatchCreate extends WeaviateConnection implements RunnableTask<Batc
             Map parameters = JacksonMapper.ofYaml().readValue(outputFileContent, Map.class);
 
             WeaviateObject weaviateObject = WeaviateObject.builder()
+                .id(UUID.randomUUID().toString())
                 .className(runContext.render(className))
                 .properties(parameters)
                 .build();

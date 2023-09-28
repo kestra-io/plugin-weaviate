@@ -20,6 +20,7 @@ import java.net.URL;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.UUID;
 
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.is;
@@ -78,19 +79,34 @@ public class QueryTest {
         Query.Output queryOutput = Query.builder()
             .scheme(SCHEME)
             .host(HOST)
-            .query(QUERY)
+            .query("""
+                   {
+                          Get {
+                            QueryTest (
+                              limit: 50
+                            ) {
+                              title
+                              _additional {
+                                id
+                              }
+                            }
+                          }
+                        }
+                   """)
             .build()
             .run(runContext);
 
         assertThat(queryOutput.getSize(), is(1));
 
-        assertThat(parameters, Matchers.containsInAnyOrder(((List<Object>) queryOutput.getData().get(className)).get(0)));
+        Map<String, Object> stringObjectMap = (Map<String, Object>) ((List<Object>) queryOutput.getData().get(className)).get(0);
+        String id = (String) ((Map<String, Object>) stringObjectMap.remove("_additional")).get("id");
+        assertThat(parameters, Matchers.containsInAnyOrder(stringObjectMap));
 
         Delete.Output deleteOutput = Delete.builder()
             .scheme(SCHEME)
             .host(HOST)
             .className(className)
-            .properties(Map.of("title", "test success"))
+            .id(id)
             .build()
             .run(runContext);
 

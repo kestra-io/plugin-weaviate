@@ -73,6 +73,7 @@ public class Delete extends WeaviateConnection implements RunnableTask<Delete.Ou
             return Output.builder()
                 .className(renderedClassName)
                 .success(result.getResult())
+                .deletedCounts(result.getResult() == Boolean.TRUE ? 1 : 0)
                 .build();
         }
 
