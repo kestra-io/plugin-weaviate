@@ -47,7 +47,7 @@ public class BatchCreateTest {
     public void testBatchCreateWithParameters() throws Exception {
         RunContext runContext = runContextFactory.of();
 
-        String className = "BatchTest";
+        String className = "BatchTest_Parameters";
         List<Map<String, Object>> parameters = List.of(Map.of("title", "test success"));
 
         BatchCreate.Output batchOutput = BatchCreate.builder()
@@ -65,7 +65,7 @@ public class BatchCreateTest {
         InputStream inputStream = runContext.uriToInputStream(batchOutput.getUri());
         try (BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream))) {
             String content = CharStreams.toString(new InputStreamReader(inputStream));
-            parametersFromFile = List.of(JacksonMapper.ofYaml().readValue(content, Map.class));
+            parametersFromFile = List.of(JacksonMapper.ofIon().readValue(content, Map.class));
         }
 
         assertThat(parametersFromFile, is(parameters));
@@ -83,7 +83,7 @@ public class BatchCreateTest {
 
         URI uri = this.putFile(resource, "/" + prefix + "/storage/query.yml");
 
-        String className = "BatchTest";
+        String className = "BatchTest_URI";
         List<Map<String, Object>> parameters = List.of(JacksonMapper.ofYaml().readValue(content, Map.class));
 
         BatchCreate.Output batchOutput = BatchCreate.builder()

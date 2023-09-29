@@ -32,7 +32,7 @@ public class QueryTest {
     private static final String QUERY = """
                        {
                           Get {
-                            QueryTest {
+                            %s {
                                 title
                             }
                           }
@@ -56,7 +56,7 @@ public class QueryTest {
     public void testQueryWithoutInternalStorage() throws Exception {
         RunContext runContext = runContextFactory.of();
 
-        String className = "QueryTest";
+        String className = "QueryTest_1";
         List<Map<String, Object>> parameters = List.of(Map.of("title", "test success"));
 
         BatchCreate.Output batchOutput = BatchCreate.builder()
@@ -75,7 +75,7 @@ public class QueryTest {
             .query("""
                    {
                           Get {
-                            QueryTest (
+                            %s (
                               limit: 50
                             ) {
                               title
@@ -85,7 +85,7 @@ public class QueryTest {
                             }
                           }
                         }
-                   """)
+                   """.formatted(className))
             .build()
             .run(runContext);
 
@@ -100,7 +100,7 @@ public class QueryTest {
     public void testQueryWithInternalStorage() throws Exception {
         RunContext runContext = runContextFactory.of();
 
-        String className = "QueryTest";
+        String className = "QueryTest_2";
         List<Map<String, Object>> parameters = List.of(Map.of("title", "test success"));
 
         BatchCreate.Output batchOutput = BatchCreate.builder()
@@ -116,7 +116,7 @@ public class QueryTest {
         Query.Output queryOutput = Query.builder()
             .scheme(SCHEME)
             .host(HOST)
-            .query(QUERY)
+            .query(QUERY.formatted(className))
             .store(true)
             .build()
             .run(runContext);
@@ -142,7 +142,7 @@ public class QueryTest {
 
         URI uri = this.putFile(resource, "/" + prefix + "/storage/query.yml");
 
-        String className = "QueryTest";
+        String className = "QueryTest_URI";
         List<Map<String, Object>> parameters = List.of(JacksonMapper.ofYaml().readValue(content, Map.class));
 
         BatchCreate.Output batchOutput = BatchCreate.builder()
@@ -158,7 +158,15 @@ public class QueryTest {
         Query.Output queryOutput = Query.builder()
             .scheme(SCHEME)
             .host(HOST)
-            .query(QUERY)
+            .query("""
+                       {
+                          Get {
+                            %s {
+                                kestra
+                            }
+                          }
+                        }
+                       """.formatted(className))
             .build()
             .run(runContext);
 
