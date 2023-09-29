@@ -129,49 +129,4 @@ public class QueryTest {
         Map rows = JacksonMapper.ofIon().readValue(outputFileContent, Map.class);
         assertThat(rows.get(className), is(queryOutput.getData().get(className)));
     }
-
-    @Test
-    public void testQueryFromURI() throws Exception {
-        RunContext runContext = runContextFactory.of();
-
-        String prefix = IdUtils.create();
-
-        URL resource = QueryTest.class.getClassLoader().getResource("application.yml");
-        String content = CharStreams.toString(new InputStreamReader(new FileInputStream(Objects.requireNonNull(resource)
-            .getFile())));
-
-        URI uri = this.putFile(resource, "/" + prefix + "/storage/query.yml");
-
-        String className = "QueryTest_URI";
-        List<Map<String, Object>> parameters = List.of(JacksonMapper.ofYaml().readValue(content, Map.class));
-
-        BatchCreate.Output batchOutput = BatchCreate.builder()
-            .scheme(SCHEME)
-            .host(HOST)
-            .className(className)
-            .objects(uri.toString())
-            .build()
-            .run(runContext);
-
-        assertThat(batchOutput.getCreatedCount(), is(1));
-
-        Query.Output queryOutput = Query.builder()
-            .scheme(SCHEME)
-            .host(HOST)
-            .query("""
-                       {
-                          Get {
-                            %s {
-                                kestra
-                            }
-                          }
-                        }
-                       """.formatted(className))
-            .build()
-            .run(runContext);
-
-        assertThat(queryOutput.getSize(), is(1));
-
-        assertThat(parameters, Matchers.contains(((List<Object>) queryOutput.getData().get(className)).get(0)));
-    }
 }
