@@ -32,10 +32,8 @@ public class QueryTest {
     private static final String QUERY = """
                        {
                           Get {
-                            QueryTest (
-                              limit: 50
-                            ) {
-                              title
+                            QueryTest {
+                                title
                             }
                           }
                         }
@@ -51,7 +49,7 @@ public class QueryTest {
         return storageInterface.put(
             new URI(path),
             new FileInputStream(Objects.requireNonNull(resource).getFile())
-                                   );
+        );
     }
 
     @Test
@@ -69,10 +67,7 @@ public class QueryTest {
             .build()
             .run(runContext);
 
-        assertThat(batchOutput.getCreatedCounts(), is(1));
-
-        assertThat(batchOutput.getClassName(), Matchers.hasItem(className));
-        assertThat(batchOutput.getProperties(), is(parameters));
+        assertThat(batchOutput.getCreatedCount(), is(1));
 
         Query.Output queryOutput = Query.builder()
             .scheme(SCHEME)
@@ -99,19 +94,6 @@ public class QueryTest {
         Map<String, Object> stringObjectMap = (Map<String, Object>) ((List<Object>) queryOutput.getData().get(className)).get(0);
         String id = (String) ((Map<String, Object>) stringObjectMap.remove("_additional")).get("id");
         assertThat(parameters, Matchers.containsInAnyOrder(stringObjectMap));
-
-        Delete.Output deleteOutput = Delete.builder()
-            .scheme(SCHEME)
-            .host(HOST)
-            .className(className)
-            .id(id)
-            .build()
-            .run(runContext);
-
-        assertThat(true, is(deleteOutput.getSuccess()));
-
-        assertThat(className, is(deleteOutput.getClassName()));
-        assertThat(deleteOutput.getDeletedCounts(), is(1L));
     }
 
     @Test
@@ -129,10 +111,7 @@ public class QueryTest {
             .build()
             .run(runContext);
 
-        assertThat(batchOutput.getCreatedCounts(), is(1));
-
-        assertThat(batchOutput.getClassName(), Matchers.hasItem(className));
-        assertThat(batchOutput.getProperties(), is(parameters));
+        assertThat(batchOutput.getCreatedCount(), is(1));
 
         Query.Output queryOutput = Query.builder()
             .scheme(SCHEME)
@@ -149,22 +128,7 @@ public class QueryTest {
         String outputFileContent = IOUtils.toString(storageInterface.get(queryOutput.getUri()), Charsets.UTF_8);
         Map rows = JacksonMapper.ofIon().readValue(outputFileContent, Map.class);
         assertThat(rows.get(className), is(queryOutput.getData().get(className)));
-
-        Delete.Output deleteOutput = Delete.builder()
-            .scheme(SCHEME)
-            .host(HOST)
-            .className(className)
-            .properties(Map.of("title", "test success"))
-            .build()
-            .run(runContext);
-
-        assertThat(true, is(deleteOutput.getSuccess()));
-
-        assertThat(className, is(deleteOutput.getClassName()));
-        assertThat(deleteOutput.getDeletedCounts(), is(1L));
     }
-
-
 
     @Test
     public void testQueryFromURI() throws Exception {
@@ -172,7 +136,7 @@ public class QueryTest {
 
         String prefix = IdUtils.create();
 
-        URL resource = QueryTest.class.getClassLoader().getResource("flows/query.yml");
+        URL resource = QueryTest.class.getClassLoader().getResource("application.yml");
         String content = CharStreams.toString(new InputStreamReader(new FileInputStream(Objects.requireNonNull(resource)
             .getFile())));
 
@@ -185,15 +149,11 @@ public class QueryTest {
             .scheme(SCHEME)
             .host(HOST)
             .className(className)
-            .objects(uri.getPath())
-            .storageInterface(storageInterface)
+            .objects(uri.toString())
             .build()
             .run(runContext);
 
-        assertThat(batchOutput.getCreatedCounts(), is(1));
-
-        assertThat(batchOutput.getClassName(), Matchers.hasItem(className));
-        assertThat(batchOutput.getProperties(), is(parameters));
+        assertThat(batchOutput.getCreatedCount(), is(1));
 
         Query.Output queryOutput = Query.builder()
             .scheme(SCHEME)
@@ -205,18 +165,5 @@ public class QueryTest {
         assertThat(queryOutput.getSize(), is(1));
 
         assertThat(parameters, Matchers.contains(((List<Object>) queryOutput.getData().get(className)).get(0)));
-
-        Delete.Output deleteOutput = Delete.builder()
-            .scheme(SCHEME)
-            .host(HOST)
-            .className(className)
-            .properties(Map.of("title", parameters.get(0).get("title").toString()))
-            .build()
-            .run(runContext);
-
-        assertThat(true, is(deleteOutput.getSuccess()));
-
-        assertThat(className, is(deleteOutput.getClassName()));
-        assertThat(deleteOutput.getDeletedCounts(), is(1L));
     }
 }

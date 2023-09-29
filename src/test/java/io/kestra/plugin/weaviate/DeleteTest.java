@@ -4,7 +4,6 @@ import io.kestra.core.runners.RunContext;
 import io.kestra.core.runners.RunContextFactory;
 import io.micronaut.test.extensions.junit5.annotation.MicronautTest;
 import jakarta.inject.Inject;
-import org.hamcrest.Matchers;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -37,10 +36,7 @@ public class DeleteTest {
             .build()
             .run(runContext);
 
-        assertThat(batchOutput.getCreatedCounts(), is(1));
-
-        assertThat(batchOutput.getClassName(), Matchers.hasItem(className));
-        assertThat(batchOutput.getProperties(), is(parameters));
+        assertThat(batchOutput.getCreatedCount(), is(1));
 
         Query.Output queryOutput = Query.builder()
             .scheme(SCHEME)
@@ -95,10 +91,7 @@ public class DeleteTest {
             .build()
             .run(runContext);
 
-        assertThat(batchOutput.getCreatedCounts(), is(1));
-
-        assertThat(batchOutput.getClassName(), Matchers.hasItem(className));
-        assertThat(batchOutput.getProperties(), is(List.of(parameters)));
+        assertThat(batchOutput.getCreatedCount(), is(1));
 
         Delete.Output deleteOutput = Delete.builder()
             .scheme(SCHEME)

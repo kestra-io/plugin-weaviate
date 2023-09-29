@@ -51,14 +51,14 @@ public class SchemaCreate extends WeaviateConnection implements RunnableTask<Sch
     )
     @PluginProperty(dynamic = true)
     @NotBlank
-    protected String className;
+    private String className;
 
     @Schema(
         title = "Fields to add to the class",
         description = "Requires specified field name and list of data type that will be stored in this field"
     )
     @PluginProperty(dynamic = true)
-    protected Map<String, List<String>> parameters;
+    private Map<String, List<String>> parameters;
 
     @Override
     public SchemaCreate.Output run(RunContext runContext) throws Exception {

@@ -10,10 +10,13 @@ import io.micronaut.test.extensions.junit5.annotation.MicronautTest;
 import jakarta.inject.Inject;
 import org.junit.jupiter.api.Test;
 
+import java.io.BufferedReader;
 import java.io.FileInputStream;
+import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.net.URI;
 import java.net.URL;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -55,10 +58,17 @@ public class BatchCreateTest {
             .build()
             .run(runContext);
 
-        assertThat(batchOutput.getCreatedCounts(), is(1));
-        assertThat(batchOutput.getClassName(), contains(className));
-        assertThat(batchOutput.getProperties(), is(parameters));
+        assertThat(batchOutput.getCreatedCount(), is(1));
         assertThat(batchOutput.getUri(), notNullValue());
+
+        List<Map<String, Object>> parametersFromFile = new ArrayList<>();
+        InputStream inputStream = runContext.uriToInputStream(batchOutput.getUri());
+        try (BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream))) {
+            String content = CharStreams.toString(new InputStreamReader(inputStream));
+            parametersFromFile = List.of(JacksonMapper.ofYaml().readValue(content, Map.class));
+        }
+
+        assertThat(parametersFromFile, is(parameters));
     }
 
     @Test
@@ -67,7 +77,7 @@ public class BatchCreateTest {
 
         String prefix = IdUtils.create();
 
-        URL resource = BatchCreate.class.getClassLoader().getResource("flows/query.yml");
+        URL resource = BatchCreate.class.getClassLoader().getResource("application.yml");
         String content = CharStreams.toString(new InputStreamReader(new FileInputStream(Objects.requireNonNull(resource)
             .getFile())));
 
@@ -77,7 +87,6 @@ public class BatchCreateTest {
         List<Map<String, Object>> parameters = List.of(JacksonMapper.ofYaml().readValue(content, Map.class));
 
         BatchCreate.Output batchOutput = BatchCreate.builder()
-            .storageInterface(storageInterface)
             .scheme(SCHEME)
             .host(HOST)
             .className(className)
@@ -85,11 +94,17 @@ public class BatchCreateTest {
             .build()
             .run(runContext);
 
-        assertThat(batchOutput.getCreatedCounts(), is(1));
-        assertThat(batchOutput.getClassName(), contains(className));
-        assertThat(batchOutput.getProperties(), is(parameters));
+        assertThat(batchOutput.getCreatedCount(), is(1));
         assertThat(batchOutput.getUri(), notNullValue());
-        assertThat(batchOutput.getUri(), is(uri));
+
+        List<Map<String, Object>> parametersFromFile = new ArrayList<>();
+        InputStream inputStream = runContext.uriToInputStream(batchOutput.getUri());
+        try (BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream))) {
+            content = CharStreams.toString(new InputStreamReader(inputStream));
+            parametersFromFile = List.of(JacksonMapper.ofIon().readValue(content, Map.class));
+        }
+
+        assertThat(parametersFromFile, is(parameters));
     }
 
 }

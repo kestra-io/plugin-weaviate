@@ -11,6 +11,7 @@ import io.swagger.v3.oas.annotations.media.Schema;
 import io.weaviate.client.WeaviateClient;
 import io.weaviate.client.base.Result;
 import io.weaviate.client.base.WeaviateErrorMessage;
+import io.weaviate.client.v1.graphql.model.GraphQLError;
 import io.weaviate.client.v1.graphql.model.GraphQLResponse;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
@@ -18,8 +19,10 @@ import lombok.experimental.SuperBuilder;
 import javax.validation.constraints.NotBlank;
 import java.io.*;
 import java.net.URI;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 @SuperBuilder
@@ -61,14 +64,14 @@ public class Query extends WeaviateConnection implements RunnableTask<Query.Outp
     @NotBlank
     @PluginProperty(dynamic = true)
     @NotBlank
-    protected String query;
+    private String query;
 
     @Schema(
         title = "Whether store data in internal storage. Default is falses"
     )
     @PluginProperty
     @Builder.Default
-    protected boolean store = false;
+    private boolean store = false;
 
     @Override
     public Query.Output run(RunContext runContext) throws Exception {
@@ -79,10 +82,14 @@ public class Query extends WeaviateConnection implements RunnableTask<Query.Outp
             .withQuery(runContext.render(query))
             .run();
 
-        if (result.hasErrors()) {
-            String message = result.getError().getMessages().stream()
-                .map(WeaviateErrorMessage::getMessage)
-                .collect(Collectors.joining(", "));
+        if (result.hasErrors() || result.getResult().getErrors() != null) {
+            String message = Optional.ofNullable(result.getError())
+                .map(weaviateError -> weaviateError.getMessages().stream()
+                    .map(WeaviateErrorMessage::getMessage)
+                    .collect(Collectors.joining(", ")))
+                .orElse(Arrays.stream(result.getResult().getErrors())
+                    .map(GraphQLError::getMessage)
+                    .collect(Collectors.joining(", ")));
 
             throw new IOException(message);
         }

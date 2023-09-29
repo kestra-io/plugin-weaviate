@@ -51,12 +51,12 @@ public class Delete extends WeaviateConnection implements RunnableTask<Delete.Ou
 
     @NotBlank
     @PluginProperty(dynamic = true)
-    protected String className;
+    private String className;
 
     @PluginProperty(dynamic = true)
-    protected String id;
+    private String id;
 
-    protected Map<String, String> properties;
+    private Map<String, String> properties;
 
     @Override
     public Delete.Output run(RunContext runContext) throws Exception {
