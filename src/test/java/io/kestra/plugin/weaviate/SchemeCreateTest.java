@@ -6,6 +6,7 @@ import io.micronaut.test.extensions.junit5.annotation.MicronautTest;
 import jakarta.inject.Inject;
 import org.junit.jupiter.api.Test;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -57,6 +58,6 @@ public class SchemeCreateTest {
             .run(runContext);
 
         Map<String, Object> data = queryOutput.getData();
-        assertThat(data.size(), is(1));
+        assertThat(data, is(Map.of(className, List.of())));
     }
 }
