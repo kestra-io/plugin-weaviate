@@ -17,13 +17,11 @@ import lombok.*;
 import lombok.experimental.SuperBuilder;
 
 import javax.validation.constraints.NotBlank;
-import javax.validation.constraints.NotNull;
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
 @SuperBuilder
 @ToString
@@ -73,7 +71,7 @@ public class Delete extends WeaviateConnection implements RunnableTask<Delete.Ou
             return Output.builder()
                 .className(renderedClassName)
                 .success(result.getResult())
-                .deletedCounts(result.getResult() == Boolean.TRUE ? 1 : 0)
+                .deletedCount(result.getResult() == Boolean.TRUE ? 1 : 0)
                 .build();
         }
 
@@ -107,7 +105,7 @@ public class Delete extends WeaviateConnection implements RunnableTask<Delete.Ou
         return Output.builder()
             .className(renderedClassName)
             .success(!result.hasErrors())
-            .deletedCounts(response.getResults().getSuccessful())
+            .deletedCount(response.getResults().getSuccessful())
             .ids(Arrays.stream(response.getResults().getObjects()).map(BatchDeleteResponse.ResultObject::getId).toList())
             .build();
     }
@@ -129,7 +127,7 @@ public class Delete extends WeaviateConnection implements RunnableTask<Delete.Ou
         @Schema(
             title = "Number of deleted objects"
         )
-        private long deletedCounts;
+        private long deletedCount;
 
         @Schema(
             title = "IDs of deleted objects"

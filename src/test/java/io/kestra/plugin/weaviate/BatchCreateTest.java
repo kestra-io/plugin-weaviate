@@ -40,7 +40,7 @@ public class BatchCreateTest {
         return storageInterface.put(
             new URI(path),
             new FileInputStream(Objects.requireNonNull(resource).getFile())
-                                   );
+        );
     }
 
     @Test

@@ -10,6 +10,8 @@ import io.kestra.core.models.tasks.RunnableTask;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.serializers.FileSerde;
 import io.kestra.core.serializers.JacksonMapper;
+import io.reactivex.BackpressureStrategy;
+import io.reactivex.Flowable;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.weaviate.client.WeaviateClient;
 import io.weaviate.client.base.Result;
@@ -75,10 +77,7 @@ public class BatchCreate extends WeaviateConnection implements RunnableTask<Batc
         List<WeaviateObject> weaviateObjects = new ArrayList<>();
 
         if (objects instanceof List) {
-            List<Map<String, Object>> objectList = JacksonMapper.ofIon()
-                .setSerializationInclusion(JsonInclude.Include.ALWAYS)
-                .convertValue(objects, new TypeReference<List<Map<String, Object>>>() {
-                });
+            List<Map<String, Object>> objectList = (List<Map<String, Object>>) objects;
 
             objectList.stream()
                 .map(param -> WeaviateObject.builder()
@@ -87,10 +86,8 @@ public class BatchCreate extends WeaviateConnection implements RunnableTask<Batc
                     .properties(param)
                     .build())
                 .forEach(weaviateObjects::add);
-        }
-
-        if (objects instanceof String) {
-            URI uri = URI.create((String) objects);
+        } else if (objects instanceof String uriString) {
+            URI uri = URI.create(runContext.render(uriString));
             String renderedClassName = runContext.render(className);
             InputStream inputStream = runContext.uriToInputStream(uri);
 

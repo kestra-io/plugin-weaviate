@@ -1,18 +1,18 @@
 package io.kestra.plugin.weaviate;
 
+import io.kestra.core.models.tasks.common.FetchType;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.runners.RunContextFactory;
 import io.micronaut.test.extensions.junit5.annotation.MicronautTest;
 import jakarta.inject.Inject;
 import org.junit.jupiter.api.Test;
 
-import java.util.Collection;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
 import static org.hamcrest.MatcherAssert.assertThat;
-import static org.hamcrest.Matchers.is;
+import static org.hamcrest.Matchers.*;
 
 @MicronautTest
 public class SchemeCreateTest {
@@ -54,10 +54,11 @@ public class SchemeCreateTest {
                           }
                         }
                    """.formatted(className))
+            .fetchType(FetchType.FETCH_ONE)
             .build()
             .run(runContext);
 
-        Map<String, Object> data = queryOutput.getData();
-        assertThat(data, is(Map.of(className, List.of())));
+        Map<String, Object> data = queryOutput.getRow();
+        assertThat((List<?>) data.get(className), empty());
     }
 }

@@ -5,6 +5,7 @@ import io.kestra.core.models.annotations.Example;
 import io.kestra.core.models.annotations.Plugin;
 import io.kestra.core.models.annotations.PluginProperty;
 import io.kestra.core.models.tasks.RunnableTask;
+import io.kestra.core.models.tasks.common.FetchType;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.serializers.FileSerde;
 import io.swagger.v3.oas.annotations.media.Schema;
@@ -17,6 +18,7 @@ import lombok.*;
 import lombok.experimental.SuperBuilder;
 
 import javax.validation.constraints.NotBlank;
+import javax.validation.constraints.NotNull;
 import java.io.*;
 import java.net.URI;
 import java.util.Arrays;
@@ -66,12 +68,17 @@ public class Query extends WeaviateConnection implements RunnableTask<Query.Outp
     @NotBlank
     private String query;
 
-    @Schema(
-        title = "Whether store data in internal storage. Default is falses"
-    )
-    @PluginProperty
-    @Builder.Default
-    private boolean store = false;
+	@Schema(
+		title = "The way you want to store data",
+		description = "FETCH_ONE output the first row\n"
+			+ "FETCH output all the row\n"
+			+ "STORE store all row in a file\n"
+			+ "NONE do nothing"
+	)
+	@PluginProperty
+	@NotNull
+	@Builder.Default
+	protected FetchType fetchType = FetchType.STORE;
 
     @Override
     public Query.Output run(RunContext runContext) throws Exception {
@@ -94,24 +101,53 @@ public class Query extends WeaviateConnection implements RunnableTask<Query.Outp
             throw new IOException(message);
         }
 
-        Map<String, Object> data = extractData(result);
-        Output.OutputBuilder outputBuilder = Output.builder().data(data);
+        Output.OutputBuilder outputBuilder = Output.builder();
 
-        if (store) {
-            outputBuilder.uri(store(data, runContext));
-        }
+        return (switch (fetchType) {
+            case FETCH_ONE -> {
+                Map<String, Object> data = extractRow(result);
+                int size = (int) data.values().stream()
+                    .mapToLong(object -> ((List<Object>) object).size())
+                    .sum();
+                yield outputBuilder
+                    .size(size)
+                    .row(data)
+                    .build();
+            }
+            case FETCH -> {
+                List<Map<String, Object>> data = extractRows(result);
+                int size = (int) data.stream()
+                    .map(Map::values)
+                    .flatMap(collection -> collection.stream().flatMap(object -> ((List<Object>) object).stream()))
+                    .count();
+                yield outputBuilder
+                    .size(size)
+                    .rows(data)
+                    .build();
+            }
+            case STORE -> {
+                List<Map<String, Object>> data = extractRows(result);
+                int size = (int) data.stream()
+                    .map(Map::values)
+                    .flatMap(collection -> collection.stream().flatMap(object -> ((List<Object>) object).stream()))
+                    .count();
 
-        int size = (int) data.values().stream().flatMap(object -> ((List<Object>) object).stream()).count();
-
-        return outputBuilder.size(size).build();
+                yield outputBuilder
+                    .size(size)
+                    .uri(store(data, runContext))
+                    .rows(data)
+                    .build();
+            }
+            default -> outputBuilder.build();
+        });
     }
 
-    private URI store(Map<String, Object> data, RunContext runContext) throws IOException {
+    private URI store(List<Map<String, Object>> data, RunContext runContext) throws IOException {
         File tempFile = runContext.tempFile(".ion").toFile();
         try (BufferedWriter fileWriter = new BufferedWriter(new FileWriter(tempFile));
              OutputStream outputStream = new FileOutputStream(tempFile)) {
 
-            for (Map.Entry<String, Object> row : data.entrySet()) {
+            for (var row : data) {
                 FileSerde.write(outputStream, row);
             }
 
@@ -121,13 +157,20 @@ public class Query extends WeaviateConnection implements RunnableTask<Query.Outp
         return runContext.putTempFile(tempFile);
     }
 
-    private Map<String, Object> extractData(Result<GraphQLResponse> result) {
+    private Map<String, Object> extractRow(Result<GraphQLResponse> result) {
         Object data = result.getResult().getData();
         LinkedTreeMap<String, Object> dataMap = (LinkedTreeMap<String, Object>) data;
-        return (Map<String, Object>) dataMap.values().stream()
+        return dataMap.values().stream()
             .map(object -> (Map<String, Object>) object)
             .flatMap(stringObjectMap -> stringObjectMap.entrySet().stream())
             .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
+    }
+
+    private List<Map<String, Object>> extractRows(Result<GraphQLResponse> result) {
+        Object data = result.getResult().getData();
+        LinkedTreeMap<String, Object> dataMap = (LinkedTreeMap<String, Object>) data;
+        return dataMap.values().stream()
+            .map(object -> (Map<String, Object>) object).toList();
     }
 
     @Getter
@@ -137,7 +180,12 @@ public class Query extends WeaviateConnection implements RunnableTask<Query.Outp
         @Schema(
             title = "Map containing the fetched data"
         )
-        private Map<String, Object> data;
+        private Map<String, Object> row;
+
+        @Schema(
+            title = "Map containing the fetched data"
+        )
+        private List<Map<String, Object>> rows;
 
         @Schema(
             title = "The URI of the stored result",

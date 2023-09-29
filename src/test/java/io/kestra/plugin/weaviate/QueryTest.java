@@ -1,11 +1,10 @@
 package io.kestra.plugin.weaviate;
 
-import com.google.common.io.CharStreams;
+import io.kestra.core.models.tasks.common.FetchType;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.runners.RunContextFactory;
 import io.kestra.core.serializers.JacksonMapper;
 import io.kestra.core.storages.StorageInterface;
-import io.kestra.core.utils.IdUtils;
 import io.micronaut.test.extensions.junit5.annotation.MicronautTest;
 import jakarta.inject.Inject;
 import org.apache.commons.io.Charsets;
@@ -14,7 +13,6 @@ import org.hamcrest.Matchers;
 import org.junit.jupiter.api.Test;
 
 import java.io.FileInputStream;
-import java.io.InputStreamReader;
 import java.net.URI;
 import java.net.URL;
 import java.util.List;
@@ -86,12 +84,13 @@ public class QueryTest {
                           }
                         }
                    """.formatted(className))
+            .fetchType(FetchType.FETCH_ONE)
             .build()
             .run(runContext);
 
         assertThat(queryOutput.getSize(), is(1));
 
-        Map<String, Object> stringObjectMap = (Map<String, Object>) ((List<Object>) queryOutput.getData().get(className)).get(0);
+        Map<String, Object> stringObjectMap = (Map<String, Object>) ((List<Object>) queryOutput.getRow().get(className)).get(0);
         String id = (String) ((Map<String, Object>) stringObjectMap.remove("_additional")).get("id");
         assertThat(parameters, Matchers.containsInAnyOrder(stringObjectMap));
     }
@@ -117,16 +116,16 @@ public class QueryTest {
             .scheme(SCHEME)
             .host(HOST)
             .query(QUERY.formatted(className))
-            .store(true)
+            .fetchType(FetchType.STORE)
             .build()
             .run(runContext);
 
         assertThat(queryOutput.getSize(), is(1));
 
-        assertThat(parameters, Matchers.containsInAnyOrder(((List<Object>) queryOutput.getData().get(className)).get(0)));
+        assertThat(parameters, Matchers.containsInAnyOrder(((List<Object>) queryOutput.getRows().get(0).get(className)).get(0)));
 
         String outputFileContent = IOUtils.toString(storageInterface.get(queryOutput.getUri()), Charsets.UTF_8);
         Map rows = JacksonMapper.ofIon().readValue(outputFileContent, Map.class);
-        assertThat(rows.get(className), is(queryOutput.getData().get(className)));
+        assertThat(rows.get(className), is(queryOutput.getRows().get(0).get(className)));
     }
 }

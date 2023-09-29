@@ -1,5 +1,6 @@
 package io.kestra.plugin.weaviate;
 
+import io.kestra.core.models.tasks.common.FetchType;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.runners.RunContextFactory;
 import io.micronaut.test.extensions.junit5.annotation.MicronautTest;
@@ -54,12 +55,13 @@ public class DeleteTest {
                           }
                         }
                    """.formatted(className))
+            .fetchType(FetchType.FETCH_ONE)
             .build()
             .run(runContext);
 
         assertThat(queryOutput.getSize(), is(1));
 
-        Map<String, Object> stringObjectMap = (Map<String, Object>) ((List<Object>) queryOutput.getData().get(className)).get(0);
+        Map<String, Object> stringObjectMap = (Map<String, Object>) ((List<Object>) queryOutput.getRow().get(className)).get(0);
         String id = (String) ((Map<String, Object>) stringObjectMap.get("_additional")).get("id");
 
         Delete.Output deleteOutput = Delete.builder()
@@ -73,7 +75,7 @@ public class DeleteTest {
         assertThat(true, is(deleteOutput.getSuccess()));
 
         assertThat(className, is(deleteOutput.getClassName()));
-        assertThat(deleteOutput.getDeletedCounts(), is(1L));
+        assertThat(deleteOutput.getDeletedCount(), is(1L));
     }
 
     @Test
@@ -104,7 +106,7 @@ public class DeleteTest {
         assertThat(true, is(deleteOutput.getSuccess()));
 
         assertThat(className, is(deleteOutput.getClassName()));
-        assertThat(deleteOutput.getDeletedCounts(), is(1L));
+        assertThat(deleteOutput.getDeletedCount(), is(1L));
     }
 
 }
