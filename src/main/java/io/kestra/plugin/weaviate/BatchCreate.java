@@ -1,21 +1,18 @@
 package io.kestra.plugin.weaviate;
 
-import com.fasterxml.jackson.annotation.JsonInclude;
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.google.common.io.CharStreams;
 import io.kestra.core.models.annotations.Example;
 import io.kestra.core.models.annotations.Plugin;
 import io.kestra.core.models.annotations.PluginProperty;
 import io.kestra.core.models.tasks.RunnableTask;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.serializers.FileSerde;
-import io.kestra.core.serializers.JacksonMapper;
 import io.reactivex.BackpressureStrategy;
 import io.reactivex.Flowable;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.weaviate.client.WeaviateClient;
 import io.weaviate.client.base.Result;
 import io.weaviate.client.base.WeaviateErrorMessage;
+import io.weaviate.client.v1.batch.api.ObjectsBatcher;
 import io.weaviate.client.v1.batch.model.ObjectGetResponse;
 import io.weaviate.client.v1.data.model.WeaviateObject;
 import lombok.*;
@@ -45,7 +42,7 @@ import java.util.stream.Collectors;
                 "apiKey: some_api_key",
                 "className: WeaviateObject",
                 "objects: " +
-                "   textField: \"text\"",
+                    "   textField: \"text\"",
                 "   numField: 32"
             }
         )
@@ -77,35 +74,34 @@ public class BatchCreate extends WeaviateConnection implements RunnableTask<Batc
         List<WeaviateObject> weaviateObjects = new ArrayList<>();
 
         if (objects instanceof List) {
-            List<Map<String, Object>> objectList = (List<Map<String, Object>>) objects;
-
-            objectList.stream()
+            weaviateObjects = ((List<Map<String, Object>>) objects).stream()
                 .map(param -> WeaviateObject.builder()
                     .id(UUID.randomUUID().toString())
                     .className(className)
                     .properties(param)
-                    .build())
-                .forEach(weaviateObjects::add);
-        } else if (objects instanceof String uriString) {
-            URI uri = URI.create(runContext.render(uriString));
-            String renderedClassName = runContext.render(className);
-            InputStream inputStream = runContext.uriToInputStream(uri);
-
-            try (BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream))) {
-                String content = CharStreams.toString(new InputStreamReader(inputStream));
-                List<Map<String, Object>> parameters = List.of(JacksonMapper.ofYaml().readValue(content, Map.class));
-
-                List<WeaviateObject> weaviateObjectList = parameters.stream()
-                    .map(map -> WeaviateObject.builder().id(UUID.randomUUID().toString()).className(renderedClassName).properties(map).build())
-                    .toList();
-                weaviateObjects.addAll(weaviateObjectList);
+                    .build()
+                ).toList();
+        } else if (objects instanceof String uri) {
+            try (BufferedReader reader = new BufferedReader(new InputStreamReader(
+                runContext.uriToInputStream(URI.create(uri))
+            ))) {
+                weaviateObjects = Flowable.create(FileSerde.reader(reader, Map.class), BackpressureStrategy.BUFFER)
+                    .map(map -> WeaviateObject.builder()
+                        .id(UUID.randomUUID().toString())
+                        .className(runContext.render(className))
+                        .properties(map)
+                        .build()
+                    ).toList().blockingGet();
             }
         }
 
-        Result<ObjectGetResponse[]> result = client.batch()
-            .objectsBatcher()
-            .withObjects(weaviateObjects.toArray(WeaviateObject[]::new))
-            .run();
+        Result<ObjectGetResponse[]> result;
+        try (ObjectsBatcher objectsBatcher = client.batch()
+            .objectsBatcher()) {
+            result = objectsBatcher
+                .withObjects(weaviateObjects.toArray(WeaviateObject[]::new))
+                .run();
+        }
 
         if (result.hasErrors()) {
             String message = result.getError().getMessages().stream()
@@ -124,9 +120,10 @@ public class BatchCreate extends WeaviateConnection implements RunnableTask<Batc
 
     private URI store(ObjectGetResponse[] responses, RunContext runContext) throws IOException {
         File tempFile = runContext.tempFile(".ion").toFile();
-        try (BufferedWriter fileWriter = new BufferedWriter(new FileWriter(tempFile));
-             OutputStream outputStream = new FileOutputStream(tempFile)) {
-
+        try (
+            BufferedWriter fileWriter = new BufferedWriter(new FileWriter(tempFile));
+            OutputStream outputStream = new FileOutputStream(tempFile)
+        ) {
             List<Map.Entry<String, Object>> data = Arrays.stream(responses)
                 .map(ObjectGetResponse::getProperties)
                 .map(Map::entrySet)
