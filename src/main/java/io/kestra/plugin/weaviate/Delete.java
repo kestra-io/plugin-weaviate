@@ -19,6 +19,7 @@ import lombok.experimental.SuperBuilder;
 import javax.validation.constraints.NotBlank;
 import java.io.IOException;
 import java.util.Arrays;
+import java.util.Date;
 import java.util.List;
 import java.util.Map;
 import java.util.stream.Collectors;
@@ -39,22 +40,31 @@ import java.util.stream.Collectors;
                 "host: localhost:8080",
                 "apiKey: some_api_key",
                 "className: WeaviateObject",
-                "properties:\n" +
+                "filter:\n" +
                     "fieldName: field value to be deleted by"
             }
         )
     }
 )
 public class Delete extends WeaviateConnection implements RunnableTask<Delete.Output> {
-
+    @Schema(
+        title = "Class name for which you want to delete data"
+    )
     @NotBlank
     @PluginProperty(dynamic = true)
     private String className;
 
+    @Schema(
+        title = "id of object to delete"
+    )
     @PluginProperty(dynamic = true)
     private String id;
 
-    private Map<String, String> properties;
+    @Schema(
+        title = "Attributes to filter by for deletion"
+    )
+    @PluginProperty(dynamic = true)
+    private Map<String, Object> filter;
 
     @Override
     public Delete.Output run(RunContext runContext) throws Exception {
@@ -75,14 +85,18 @@ public class Delete extends WeaviateConnection implements RunnableTask<Delete.Ou
                 .build();
         }
 
-        if (properties == null) {
+        if (this.filter == null) {
             throw new IllegalStateException("No properties or id were specified");
         }
 
+
         WhereFilter filter = WhereFilter.builder()
-            .path(properties.keySet().toArray(String[]::new))
-            .operator(Operator.Like)
-            .valueText(properties.values().toArray(String[]::new))
+            .operator(Operator.And)
+            .operands(
+                runContext.render(this.filter).entrySet().stream()
+                    .map(e -> toWhereFilter(e.getKey(), e.getValue()))
+                    .toArray(WhereFilter[]::new)
+            )
             .build();
 
         Result<BatchDeleteResponse> result = client.batch()
@@ -108,6 +122,28 @@ public class Delete extends WeaviateConnection implements RunnableTask<Delete.Ou
             .deletedCount(response.getResults().getSuccessful())
             .ids(Arrays.stream(response.getResults().getObjects()).map(BatchDeleteResponse.ResultObject::getId).toList())
             .build();
+    }
+
+    private WhereFilter toWhereFilter(String path, Object value) {
+        WhereFilter.WhereFilterBuilder builder = WhereFilter.builder()
+            .path(path)
+            .operator(Operator.Like);
+
+        if(value instanceof String typedValue) {
+            builder.valueText(typedValue);
+        } else if(value instanceof Boolean typedValue) {
+            builder.operator(Operator.Equal).valueBoolean(typedValue);
+        } else if(value instanceof Date typedValue) {
+            builder.valueDate(typedValue);
+        } else if(value instanceof Integer typedValue) {
+            builder.operator(Operator.Equal).valueNumber((double) typedValue);
+        } else if(value instanceof Double typedValue) {
+            builder.operator(Operator.Equal).valueNumber(typedValue);
+        } else {
+            builder.valueText(value.toString());
+        }
+
+        return builder.build();
     }
 
     @Getter

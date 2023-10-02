@@ -1,10 +1,10 @@
 package io.kestra.plugin.weaviate;
 
-import com.google.gson.internal.LinkedTreeMap;
 import io.kestra.core.models.annotations.Example;
 import io.kestra.core.models.annotations.Plugin;
 import io.kestra.core.models.annotations.PluginProperty;
 import io.kestra.core.models.tasks.RunnableTask;
+import io.kestra.core.models.tasks.common.FetchOutput;
 import io.kestra.core.models.tasks.common.FetchType;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.serializers.FileSerde;
@@ -21,11 +21,9 @@ import javax.validation.constraints.NotBlank;
 import javax.validation.constraints.NotNull;
 import java.io.*;
 import java.net.URI;
-import java.util.Arrays;
-import java.util.List;
-import java.util.Map;
-import java.util.Optional;
+import java.util.*;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 
 @SuperBuilder
 @ToString
@@ -58,7 +56,7 @@ import java.util.stream.Collectors;
         )
     }
 )
-public class Query extends WeaviateConnection implements RunnableTask<Query.Output> {
+public class Query extends WeaviateConnection implements RunnableTask<FetchOutput> {
 
     @Schema(
         title = "GraphQL query which will be executed"
@@ -81,7 +79,7 @@ public class Query extends WeaviateConnection implements RunnableTask<Query.Outp
 	protected FetchType fetchType = FetchType.STORE;
 
     @Override
-    public Query.Output run(RunContext runContext) throws Exception {
+    public FetchOutput run(RunContext runContext) throws Exception {
         WeaviateClient client = connect(runContext);
 
         Result<GraphQLResponse> result = client.graphQL()
@@ -101,48 +99,31 @@ public class Query extends WeaviateConnection implements RunnableTask<Query.Outp
             throw new IOException(message);
         }
 
-        Output.OutputBuilder outputBuilder = Output.builder();
+        FetchOutput.FetchOutputBuilder outputBuilder = FetchOutput.builder();
 
         return (switch (fetchType) {
             case FETCH_ONE -> {
                 Map<String, Object> data = extractRow(result);
-                int size = (int) data.values().stream()
-                    .mapToLong(object -> ((List<Object>) object).size())
-                    .sum();
                 yield outputBuilder
-                    .size(size)
+                    .size(data == null ? 0L : 1L)
                     .row(data)
                     .build();
             }
-            case FETCH -> {
-                List<Map<String, Object>> data = extractRows(result);
-                int size = (int) data.stream()
-                    .map(Map::values)
-                    .flatMap(collection -> collection.stream().flatMap(object -> ((List<Object>) object).stream()))
-                    .count();
-                yield outputBuilder
-                    .size(size)
-                    .rows(data)
-                    .build();
-            }
-            case STORE -> {
-                List<Map<String, Object>> data = extractRows(result);
-                int size = (int) data.stream()
-                    .map(Map::values)
-                    .flatMap(collection -> collection.stream().flatMap(object -> ((List<Object>) object).stream()))
-                    .count();
+            case FETCH, STORE -> {
+                var rows = extractRows(result);
+                outputBuilder = outputBuilder.size((long) rows.size());
 
-                yield outputBuilder
-                    .size(size)
-                    .uri(store(data, runContext))
-                    .rows(data)
-                    .build();
+                if(fetchType == FetchType.FETCH) {
+                    yield outputBuilder.rows(rows).build();
+                } else {
+                    yield outputBuilder.uri(store(rows, runContext)).build();
+                }
             }
             default -> outputBuilder.build();
         });
     }
 
-    private URI store(List<Map<String, Object>> data, RunContext runContext) throws IOException {
+    private URI store(List<Object> data, RunContext runContext) throws IOException {
         File tempFile = runContext.tempFile(".ion").toFile();
         try (BufferedWriter fileWriter = new BufferedWriter(new FileWriter(tempFile));
              OutputStream outputStream = new FileOutputStream(tempFile)) {
@@ -157,46 +138,33 @@ public class Query extends WeaviateConnection implements RunnableTask<Query.Outp
         return runContext.putTempFile(tempFile);
     }
 
+    // Response structure:
+    // result.getResult().getData() = {"GET": {"Class1": [{"prop": "value"}], "Class2": [{"prop2": "value2"}]}}
+    // Method will return {
+    private Map<String, List<Map<String, Object>>> extractResultByClassName(Result<GraphQLResponse> result) {
+        var castResult = (Map<String, Map<String, List<Map<String, Object>>>>) result.getResult().getData();
+        return castResult.values().stream().reduce(new HashMap<>(), (acc, map) -> {
+            acc.putAll(map);
+            return acc;
+        }, (m1, m2) -> {
+            m1.putAll(m2);
+            return m1;
+        });
+    }
+
     private Map<String, Object> extractRow(Result<GraphQLResponse> result) {
-        Object data = result.getResult().getData();
-        LinkedTreeMap<String, Object> dataMap = (LinkedTreeMap<String, Object>) data;
-        return dataMap.values().stream()
-            .map(object -> (Map<String, Object>) object)
-            .flatMap(stringObjectMap -> stringObjectMap.entrySet().stream())
-            .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
+        return extractResultByClassName(result).values().stream()
+            .findFirst()
+            .map(Collection::stream)
+            .flatMap(Stream::findFirst)
+            .orElse(null);
     }
 
-    private List<Map<String, Object>> extractRows(Result<GraphQLResponse> result) {
-        Object data = result.getResult().getData();
-        LinkedTreeMap<String, Object> dataMap = (LinkedTreeMap<String, Object>) data;
-        return dataMap.values().stream()
-            .map(object -> (Map<String, Object>) object).toList();
-    }
-
-    @Getter
-    @Builder
-    public static class Output implements io.kestra.core.models.tasks.Output {
-
-        @Schema(
-            title = "Map containing the fetched data"
-        )
-        private Map<String, Object> row;
-
-        @Schema(
-            title = "Map containing the fetched data"
-        )
-        private List<Map<String, Object>> rows;
-
-        @Schema(
-            title = "The URI of the stored result",
-            description = "Only populated if using the store as true"
-        )
-        private URI uri;
-
-        @Schema(
-            title = "The amount of rows fetched"
-        )
-        private int size;
-
+    private List<Object> extractRows(Result<GraphQLResponse> result) {
+        return extractResultByClassName(result).entrySet().stream()
+            .flatMap(e -> e.getValue().stream()
+                .map(object -> Map.entry(e.getKey(), object))
+            ).map(Object.class::cast)
+            .toList();
     }
 }

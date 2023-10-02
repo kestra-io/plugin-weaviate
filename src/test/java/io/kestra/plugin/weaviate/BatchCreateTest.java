@@ -2,18 +2,11 @@ package io.kestra.plugin.weaviate;
 
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.runners.RunContextFactory;
-import io.kestra.core.serializers.FileSerde;
 import io.kestra.core.storages.StorageInterface;
-import io.micronaut.test.extensions.junit5.annotation.MicronautTest;
-import io.reactivex.BackpressureStrategy;
-import io.reactivex.Flowable;
 import jakarta.inject.Inject;
 import org.junit.jupiter.api.Test;
 
-import java.io.BufferedReader;
 import java.io.FileInputStream;
-import java.io.InputStream;
-import java.io.InputStreamReader;
 import java.net.URI;
 import java.net.URL;
 import java.util.List;
@@ -24,12 +17,7 @@ import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.is;
 import static org.hamcrest.Matchers.notNullValue;
 
-@MicronautTest
-public class BatchCreateTest {
-
-    public static final String SCHEME = "http";
-    public static final String HOST = "localhost:8080";
-
+public class BatchCreateTest extends WeaviateTest {
     @Inject
     private RunContextFactory runContextFactory;
 
@@ -40,13 +28,12 @@ public class BatchCreateTest {
     public void testBatchCreateWithParameters() throws Exception {
         RunContext runContext = runContextFactory.of();
 
-        String className = "BatchTest_Parameters";
         List<Map<String, Object>> objectsToCreate = List.of(Map.of("title", "test success"));
 
         BatchCreate.Output batchOutput = BatchCreate.builder()
             .scheme(SCHEME)
             .host(HOST)
-            .className(className)
+            .className(CLASS_NAME)
             .objects(objectsToCreate)
             .build()
             .run(runContext);
@@ -69,12 +56,10 @@ public class BatchCreateTest {
             new FileInputStream(Objects.requireNonNull(resource).getFile())
         );
 
-        String className = "BatchTest_URI";
-
         BatchCreate.Output batchOutput = BatchCreate.builder()
             .scheme(SCHEME)
             .host(HOST)
-            .className(className)
+            .className(CLASS_NAME)
             .objects(uri.toString())
             .build()
             .run(runContext);
@@ -83,11 +68,5 @@ public class BatchCreateTest {
         assertThat(batchOutput.getUri(), notNullValue());
 
         assertThat(readObjectsFromStream(runContext.uriToInputStream(batchOutput.getUri())), is(readObjectsFromStream(resource.openStream())));
-    }
-
-    private List<Map> readObjectsFromStream(InputStream inputStream) throws Exception {
-        try (BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream))) {
-            return Flowable.create(FileSerde.reader(reader, Map.class), BackpressureStrategy.BUFFER).toList().blockingGet();
-        }
     }
 }

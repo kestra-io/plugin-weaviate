@@ -58,13 +58,13 @@ public class SchemaCreate extends WeaviateConnection implements RunnableTask<Sch
         description = "Requires specified field name and list of data type that will be stored in this field"
     )
     @PluginProperty(dynamic = true)
-    private Map<String, List<String>> parameters;
+    private Map<String, List<String>> fields;
 
     @Override
     public SchemaCreate.Output run(RunContext runContext) throws Exception {
         WeaviateClient client = connect(runContext);
 
-        List<Property> properties = parameters.entrySet().stream()
+        List<Property> properties = fields.entrySet().stream()
             .map(SchemaCreate::buildProperty)
             .toList();
 

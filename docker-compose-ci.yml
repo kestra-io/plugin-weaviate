@@ -4,7 +4,7 @@ services:
     image: semitechnologies/weaviate:1.21.3
     container_name: weaviate
     ports:
-      - 8080:8080
+      - 51525:8080
     restart: on-failure
     environment:
       QUERY_DEFAULTS_LIMIT: 25
