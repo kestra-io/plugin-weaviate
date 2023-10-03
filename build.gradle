@@ -24,7 +24,7 @@ sourceCompatibility = 17
 targetCompatibility = 17
 
 group "io.kestra.plugin"
-description 'Plugin template for Kestra'
+description 'Plugin Weaviate for Kestra'
 
 tasks.withType(JavaCompile) {
     options.encoding = "UTF-8"
@@ -55,6 +55,7 @@ dependencies {
 
     // libs included in the final jar
     api group: 'com.google.code.gson', name: 'gson', version: '2.10.1'
+    api group: 'io.weaviate', name: 'client', version: '4.3.0'
 }
 
 
@@ -110,7 +111,7 @@ jar {
     manifest {
         attributes(
                 "X-Kestra-Name": project.name,
-                "X-Kestra-Title": "Template",
+                "X-Kestra-Title": "Weaviate",
                 "X-Kestra-Group": project.group + ".templates",
                 "X-Kestra-Description": project.description,
                 "X-Kestra-Version": project.version
