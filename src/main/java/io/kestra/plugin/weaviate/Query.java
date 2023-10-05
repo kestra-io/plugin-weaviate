@@ -31,35 +31,67 @@ import java.util.stream.Stream;
 @EqualsAndHashCode
 @NoArgsConstructor
 @Schema(
-    title = "GraphQL query request to Weaviate database."
+    title = "Query Weaviate database with GraphQL."
 )
 @Plugin(
     examples = {
         @Example(
-            title = "Send a GraphQL query request to a Weaviate database, which allows you to retrieve data from the database",
-            code = {
-                "host: localhost:8080",
-                "apiKey: some_api_key",
-                "query: " + """
-                       {
-                          Get {
-                            ObjectClassName (
-                              limit: 50
-                            ) {
-                              title,
-                              description
-                            }
+            title = "Execute a GraphQL query to fetch data from a Weaviate database",
+            full = true,
+            code = """
+                id: weaviate_query
+                namespace: dev
+
+                tasks:
+                  - id: query
+                    type: io.kestra.plugin.weaviate.Query
+                    url: https://demo-cluster-id.weaviate.network
+                    apiKey: "{{ secret('WEAVIATE_API_KEY') }}"
+                    query: | 
+                      {
+                        Get {
+                          Question(limit: 5) {
+                            question
+                            answer
+                            category
                           }
                         }
-                       """
-            }
+                      }
+
+                """
+        ),
+        @Example(
+            title = "Query data from a Weaviate database using Generative Search with OpenAI",
+            full = true,
+            code = """
+                id: weaviate_generative_search
+                namespace: dev
+
+                tasks:
+                  - id: query
+                    type: io.kestra.plugin.weaviate.Query
+                    url: https://demo-cluster-id.weaviate.network
+                    apiKey: "{{ secret('WEAVIATE_API_KEY') }}"
+                    headers: 
+                      X-OpenAI-Api-Key: "{{ secret('OPENAI_API_KEY') }}"
+                    query: | 
+                      {
+                        Get {
+                          Question(limit: 5, nearText: {concepts: ["biology"]}) {
+                            question
+                            answer
+                            category
+                          }
+                        }
+                      }
+                """
         )
     }
 )
 public class Query extends WeaviateConnection implements RunnableTask<FetchOutput> {
 
     @Schema(
-        title = "GraphQL query which will be executed"
+        title = "GraphQL query"
     )
     @NotBlank
     @PluginProperty(dynamic = true)
@@ -67,11 +99,11 @@ public class Query extends WeaviateConnection implements RunnableTask<FetchOutpu
     private String query;
 
 	@Schema(
-		title = "The way you want to store data",
-		description = "FETCH_ONE output the first row\n"
-			+ "FETCH output all the row\n"
-			+ "STORE store all row in a file\n"
-			+ "NONE do nothing"
+		title = "How you want to store the output data",
+		description = "FETCH_ONE outputs only the first row\n"
+			+ "FETCH outputs all rows\n"
+			+ "STORE stores all rows in a file\n"
+			+ "NONE doesn't store any data. It's particularly useful when you execute DDL statements or run queries that insert data into another table e.g. using `SELECT ... INSERT INTO` statements."
 	)
 	@PluginProperty
 	@NotNull

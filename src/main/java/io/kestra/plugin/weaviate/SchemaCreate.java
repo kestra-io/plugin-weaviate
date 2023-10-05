@@ -26,20 +26,19 @@ import java.util.stream.Collectors;
 @EqualsAndHashCode
 @NoArgsConstructor
 @Schema(
-    title = "Create class schema in Weaviate database."
+    title = "Create a class schema in a Weaviate database."
 )
 @Plugin(
     examples = {
         @Example(
             title = "Send schema creation request to a Weaviate database",
             code = {
-                "host: localhost:8080",
-                "apiKey: some_api_key",
+                "uri: localhost:8080",
                 "className: WeaviateObject",
                 "parameters:\n" +
-                "    fieldName:\n" +
-                "       - text",
-                "       - string"
+                "  fieldName:\n" +
+                "    - text",
+                "    - string"
             }
         )
     }
@@ -55,7 +54,7 @@ public class SchemaCreate extends WeaviateConnection implements RunnableTask<Sch
 
     @Schema(
         title = "Fields to add to the class",
-        description = "Requires specified field name and list of data type that will be stored in this field"
+        description = "Requires specified field name and a list of data types that will be stored in this field"
     )
     @PluginProperty(dynamic = true)
     private Map<String, List<String>> fields;

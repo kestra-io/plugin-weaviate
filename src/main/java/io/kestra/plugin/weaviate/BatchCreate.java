@@ -33,32 +33,50 @@ import static io.kestra.core.utils.Rethrow.throwFunction;
 @EqualsAndHashCode
 @NoArgsConstructor
 @Schema(
-    title = "Batch insert for Weaviate database.",
-    description = "Batch insert in Weaviate database. If schema does not exist, schema will automatically be created"
+    title = "Batch-insert data to a Weaviate database.",
+    description = "Data can be either in an ION-serialized file format or as a list of key-value pairs. If the schema doesn't exist yet, it will be created automatically."
 )
 @Plugin(
     examples = {
         @Example(
             title = "Send batch object creation request to a Weaviate database",
-            code = {
-                "host: localhost:8080",
-                "apiKey: some_api_key",
-                "className: WeaviateObject",
-                "objects: ",
-                "  - textField: \"text\"",
-                "    numField: 32",
-                "  - textField: \"another text\"",
-                "    numField: 64"
-            }
+            full = true,
+            code = """
+                id: weaviate_batch_load
+                namespace: dev
+
+                tasks:
+                  - id: batch_load
+                    type: io.kestra.plugin.weaviate.BatchCreate
+                    url: "https://demo-cluster-id.weaviate.network"
+                    apiKey: "{{ secret('WEAVIATE_API_KEY') }}"
+                    className: WeaviateDemo
+                    objects: 
+                      - textField: "some text"
+                        numField: 24
+                      - textField: "another text"
+                        numField: 42
+                """
         ),
         @Example(
-            title = "Send batch object creation request to a Weaviate database using a ION input file resulting from another database query",
-            code = {
-                "host: localhost:8080",
-                "apiKey: some_api_key",
-                "className: WeaviateObject",
-                "objects: {{ outputs.sql.uri }}"
-            }
+            title = "Send batch object creation request to a Weaviate database using an ION input file e.g. passed from output of another task",
+            full = true,
+            code = """
+                id: weaviate_batch_insert
+                namespace: dev
+
+                tasks:
+                  - id: extract
+                    type: io.kestra.plugin.fs.http.Download
+                    uri: https://huggingface.co/datasets/kestra/datasets/raw/main/ion/ingest.ion
+
+                  - id: batch_insert
+                    type: io.kestra.plugin.weaviate.BatchCreate
+                    url: "https://demo-cluster-id.weaviate.network"
+                    apiKey: "{{ secret('WEAVIATE_API_KEY') }}"
+                    className: Titles
+                    objects: "{{ outputs.extract.uri }}"
+                """
         )
     }
 )
@@ -160,7 +178,7 @@ public class BatchCreate extends WeaviateConnection implements RunnableTask<Batc
 
         @Schema(
             title = "The URI of stored data",
-            description = "Content of file will be the created objects data"
+            description = "The contents of the file will be the data ingested into Weaviate."
         )
         private URI uri;
 

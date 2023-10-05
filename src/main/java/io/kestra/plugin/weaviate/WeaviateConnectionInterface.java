@@ -8,22 +8,22 @@ import java.util.Map;
 
 public interface WeaviateConnectionInterface {
     @Schema(
-        title = "Connection url",
-        description = "Example: localhost:8080 or https://secured.weaviate:8080"
+        title = "Connection URL",
+        description = "Example: localhost:8080 or https://cluster-id.weaviate.network"
     )
     @NotBlank
     @PluginProperty(dynamic = true)
     String getUrl();
 
     @Schema(
-        title = "Connection api key",
-        description = "If not provided, the anonymous authentication scheme will be used"
+        title = "API key to authenticate with a managed Weaviate cluster",
+        description = "If not provided, the anonymous authentication scheme will be used."
     )
     @PluginProperty(dynamic = true)
     String getApiKey();
 
     @Schema(
-        title = "Additional headers to add to the request"
+        title = "Additional headers to add to the request e.g. to authenticate with OpenAI API"
     )
     @PluginProperty(dynamic = true)
     Map<String, String> getHeaders();
