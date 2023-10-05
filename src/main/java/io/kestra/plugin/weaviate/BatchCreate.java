@@ -6,6 +6,7 @@ import io.kestra.core.models.annotations.PluginProperty;
 import io.kestra.core.models.tasks.RunnableTask;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.serializers.FileSerde;
+import io.kestra.core.utils.Rethrow;
 import io.reactivex.BackpressureStrategy;
 import io.reactivex.Flowable;
 import io.swagger.v3.oas.annotations.media.Schema;
@@ -24,6 +25,8 @@ import java.net.URI;
 import java.util.*;
 import java.util.stream.Collectors;
 
+import static io.kestra.core.utils.Rethrow.throwFunction;
+
 @SuperBuilder
 @ToString
 @Getter
@@ -41,9 +44,20 @@ import java.util.stream.Collectors;
                 "host: localhost:8080",
                 "apiKey: some_api_key",
                 "className: WeaviateObject",
-                "objects: " +
-                    "   textField: \"text\"",
-                "   numField: 32"
+                "objects: ",
+                "  - textField: \"text\"",
+                "    numField: 32",
+                "  - textField: \"another text\"",
+                "    numField: 64"
+            }
+        ),
+        @Example(
+            title = "Send batch object creation request to a Weaviate database using a ION input file resulting from another database query",
+            code = {
+                "host: localhost:8080",
+                "apiKey: some_api_key",
+                "className: WeaviateObject",
+                "objects: {{ outputs.sql.uri }}"
             }
         )
     }
@@ -75,15 +89,15 @@ public class BatchCreate extends WeaviateConnection implements RunnableTask<Batc
 
         if (objects instanceof List) {
             weaviateObjects = ((List<Map<String, Object>>) objects).stream()
-                .map(param -> WeaviateObject.builder()
+                .map(throwFunction(param -> WeaviateObject.builder()
                     .id(UUID.randomUUID().toString())
                     .className(className)
-                    .properties(param)
+                    .properties(runContext.render(param))
                     .build()
-                ).toList();
+                )).toList();
         } else if (objects instanceof String uri) {
             try (BufferedReader reader = new BufferedReader(new InputStreamReader(
-                runContext.uriToInputStream(URI.create(uri))
+                runContext.uriToInputStream(URI.create(runContext.render(uri)))
             ))) {
                 weaviateObjects = Flowable.create(FileSerde.reader(reader, Map.class), BackpressureStrategy.BUFFER)
                     .map(map -> WeaviateObject.builder()

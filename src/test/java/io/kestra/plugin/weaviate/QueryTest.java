@@ -38,8 +38,7 @@ public class QueryTest extends WeaviateTest {
         List<Map<String, Object>> parameters = List.of(Map.of("title", "test success"));
 
         BatchCreate.Output batchOutput = BatchCreate.builder()
-            .scheme(SCHEME)
-            .host(HOST)
+            .url(URL)
             .className(CLASS_NAME)
             .objects(parameters)
             .build()
@@ -48,8 +47,7 @@ public class QueryTest extends WeaviateTest {
         assertThat(batchOutput.getCreatedCount(), is(1));
 
         FetchOutput queryOutput = Query.builder()
-            .scheme(SCHEME)
-            .host(HOST)
+            .url(URL)
             .query("""
                 {
                        Get {
@@ -86,8 +84,7 @@ public class QueryTest extends WeaviateTest {
         );
 
         BatchCreate.Output batchOutput = BatchCreate.builder()
-            .scheme(SCHEME)
-            .host(HOST)
+            .url(URL)
             .className(CLASS_NAME)
             .objects(objectsToCreate)
             .build()
@@ -96,8 +93,7 @@ public class QueryTest extends WeaviateTest {
         assertThat(batchOutput.getCreatedCount(), is(2));
 
         FetchOutput queryOutput = Query.builder()
-            .scheme(SCHEME)
-            .host(HOST)
+            .url(URL)
             .query(QUERY.formatted(CLASS_NAME))
             .fetchType(FetchType.FETCH)
             .build()
@@ -123,8 +119,7 @@ public class QueryTest extends WeaviateTest {
         );
 
         BatchCreate.Output batchOutput = BatchCreate.builder()
-            .scheme(SCHEME)
-            .host(HOST)
+            .url(URL)
             .className(CLASS_NAME)
             .objects(objectsToCreate)
             .build()
@@ -133,8 +128,7 @@ public class QueryTest extends WeaviateTest {
         assertThat(batchOutput.getCreatedCount(), is(2));
 
         FetchOutput queryOutput = Query.builder()
-            .scheme(SCHEME)
-            .host(HOST)
+            .url(URL)
             .query(QUERY.formatted(CLASS_NAME))
             .fetchType(FetchType.STORE)
             .build()

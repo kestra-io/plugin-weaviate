@@ -16,8 +16,8 @@ import java.util.Map;
 
 @MicronautTest
 public abstract class WeaviateTest {
-    protected static final String SCHEME = "http";
     protected static final String HOST = "localhost:51525";
+    protected static final String URL = "http://localhost:51525";
     protected static final String CLASS_NAME = "WeaviateTest";
 
     @AfterEach
@@ -26,7 +26,7 @@ public abstract class WeaviateTest {
     }
 
     protected WeaviateClient client() {
-        return new WeaviateClient(new Config(SCHEME, HOST));
+        return new WeaviateClient(new Config("http", HOST));
     }
 
     protected List<Map> readObjectsFromStream(InputStream inputStream) throws Exception {

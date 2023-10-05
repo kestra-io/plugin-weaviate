@@ -26,13 +26,12 @@ public class BatchCreateTest extends WeaviateTest {
 
     @Test
     public void testBatchCreateWithParameters() throws Exception {
-        RunContext runContext = runContextFactory.of();
+        RunContext runContext = runContextFactory.of(Map.of("title", "test success"));
 
-        List<Map<String, Object>> objectsToCreate = List.of(Map.of("title", "test success"));
+        List<Map<String, Object>> objectsToCreate = List.of(Map.of("title", "{{title}}"));
 
         BatchCreate.Output batchOutput = BatchCreate.builder()
-            .scheme(SCHEME)
-            .host(HOST)
+            .url(URL)
             .className(CLASS_NAME)
             .objects(objectsToCreate)
             .build()
@@ -41,12 +40,11 @@ public class BatchCreateTest extends WeaviateTest {
         assertThat(batchOutput.getCreatedCount(), is(1));
         assertThat(batchOutput.getUri(), notNullValue());
 
-        assertThat(readObjectsFromStream(runContext.uriToInputStream(batchOutput.getUri())), is(objectsToCreate));
+        assertThat(readObjectsFromStream(runContext.uriToInputStream(batchOutput.getUri())), is(List.of(Map.of("title", "test success"))));
     }
 
     @Test
     public void testBatchCreateWithUri() throws Exception {
-        RunContext runContext = runContextFactory.of();
 
         String fileName = "weaviate-objects.ion";
         URL resource = BatchCreate.class.getClassLoader().getResource(fileName);
@@ -56,11 +54,11 @@ public class BatchCreateTest extends WeaviateTest {
             new FileInputStream(Objects.requireNonNull(resource).getFile())
         );
 
+        RunContext runContext = runContextFactory.of(Map.of("uri", uri.toString()));
         BatchCreate.Output batchOutput = BatchCreate.builder()
-            .scheme(SCHEME)
-            .host(HOST)
+            .url(URL)
             .className(CLASS_NAME)
-            .objects(uri.toString())
+            .objects("{{uri}}")
             .build()
             .run(runContext);
 
