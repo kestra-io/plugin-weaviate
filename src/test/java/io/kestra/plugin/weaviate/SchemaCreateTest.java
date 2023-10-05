@@ -26,8 +26,7 @@ public class SchemaCreateTest extends WeaviateTest {
         Map<String, List<String>> parameters = Map.of("title", List.of("text"));
 
         SchemaCreate.Output schemeOutput = SchemaCreate.builder()
-            .scheme(SCHEME)
-            .host(HOST)
+            .url(URL)
             .className(CLASS_NAME)
             .fields(parameters)
             .build()

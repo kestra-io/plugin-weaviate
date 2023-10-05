@@ -10,7 +10,8 @@ import io.weaviate.client.v1.auth.exception.AuthException;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
 
-import javax.validation.constraints.NotBlank;
+import java.util.Collections;
+import java.util.Map;
 
 @SuperBuilder
 @ToString
@@ -18,18 +19,23 @@ import javax.validation.constraints.NotBlank;
 @Getter
 @NoArgsConstructor
 public abstract class WeaviateConnection extends Task implements WeaviateConnectionInterface {
+    private String url;
 
-    @Builder.Default
-    private String scheme = "https";
-
-    @NotBlank
-    private String host;
-
-    @NotBlank
     private String apiKey;
 
+    @Builder.Default
+    private Map<String, String> headers = Collections.emptyMap();
+
     protected WeaviateClient connect(RunContext context) throws AuthException, IllegalVariableEvaluationException {
-        Config config = new Config(context.render(scheme), context.render(host));
+        String renderedUrl = context.render(url);
+        int schemeSeparatorIdx = renderedUrl.indexOf("://");
+        String scheme = schemeSeparatorIdx == -1 ? "https" : renderedUrl.substring(0, schemeSeparatorIdx);
+        @SuppressWarnings({"unchecked", "rawtypes"})
+        Config config = new Config(
+            scheme,
+            renderedUrl.substring(schemeSeparatorIdx == -1 ? 0 : schemeSeparatorIdx + 3),
+            context.render((Map) headers)
+        );
 
         if (apiKey == null) {
             return new WeaviateClient(config);
