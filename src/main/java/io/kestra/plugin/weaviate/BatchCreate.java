@@ -4,6 +4,7 @@ import io.kestra.core.models.annotations.Example;
 import io.kestra.core.models.annotations.Plugin;
 import io.kestra.core.models.annotations.PluginProperty;
 import io.kestra.core.models.tasks.RunnableTask;
+import io.kestra.core.models.tasks.VoidOutput;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.serializers.FileSerde;
 import io.reactivex.BackpressureStrategy;
@@ -48,7 +49,7 @@ import java.util.stream.Collectors;
         )
     }
 )
-public class BatchCreate extends WeaviateConnection implements RunnableTask<BatchCreate.Output> {
+public class BatchCreate extends WeaviateConnection implements RunnableTask<VoidOutput> {
 
     @Schema(
         title = "Class name where you want to insert data"
@@ -68,7 +69,7 @@ public class BatchCreate extends WeaviateConnection implements RunnableTask<Batc
     private Object objects;
 
     @Override
-    public BatchCreate.Output run(RunContext runContext) throws Exception {
+    public VoidOutput run(RunContext runContext) throws Exception {
         WeaviateClient client = connect(runContext);
 
         List<WeaviateObject> weaviateObjects = new ArrayList<>();
@@ -111,11 +112,7 @@ public class BatchCreate extends WeaviateConnection implements RunnableTask<Batc
             throw new IOException(message);
         }
 
-        ObjectGetResponse[] responses = result.getResult();
-        return Output.builder()
-            .uri(store(responses, runContext))
-            .createdCount(result.getResult().length)
-            .build();
+        return null;
     }
 
     private URI store(ObjectGetResponse[] responses, RunContext runContext) throws IOException {

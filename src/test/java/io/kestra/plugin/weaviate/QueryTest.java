@@ -37,15 +37,13 @@ public class QueryTest extends WeaviateTest {
 
         List<Map<String, Object>> parameters = List.of(Map.of("title", "test success"));
 
-        BatchCreate.Output batchOutput = BatchCreate.builder()
+        BatchCreate.builder()
             .scheme(SCHEME)
             .host(HOST)
             .className(CLASS_NAME)
             .objects(parameters)
             .build()
             .run(runContext);
-
-        assertThat(batchOutput.getCreatedCount(), is(1));
 
         FetchOutput queryOutput = Query.builder()
             .scheme(SCHEME)
@@ -85,15 +83,13 @@ public class QueryTest extends WeaviateTest {
             Map.of("title", "test success 2")
         );
 
-        BatchCreate.Output batchOutput = BatchCreate.builder()
+        BatchCreate.builder()
             .scheme(SCHEME)
             .host(HOST)
             .className(CLASS_NAME)
             .objects(objectsToCreate)
             .build()
             .run(runContext);
-
-        assertThat(batchOutput.getCreatedCount(), is(2));
 
         FetchOutput queryOutput = Query.builder()
             .scheme(SCHEME)
@@ -122,15 +118,13 @@ public class QueryTest extends WeaviateTest {
             Map.of("title", "test success 2")
         );
 
-        BatchCreate.Output batchOutput = BatchCreate.builder()
+        BatchCreate.builder()
             .scheme(SCHEME)
             .host(HOST)
             .className(CLASS_NAME)
             .objects(objectsToCreate)
             .build()
             .run(runContext);
-
-        assertThat(batchOutput.getCreatedCount(), is(2));
 
         FetchOutput queryOutput = Query.builder()
             .scheme(SCHEME)
@@ -144,7 +138,7 @@ public class QueryTest extends WeaviateTest {
         assertThat(queryOutput.getRow(), is(nullValue()));
         assertThat(queryOutput.getRows(), is(nullValue()));
 
-        var queryOutputContent = readObjectsFromStream(storageInterface.get(queryOutput.getUri()));
+        var queryOutputContent = readObjectsFromStream(storageInterface.get(null, queryOutput.getUri()));
 
         assertThat(queryOutputContent, containsInAnyOrder(
             Map.of(CLASS_NAME, Map.of("title", "test success")),
