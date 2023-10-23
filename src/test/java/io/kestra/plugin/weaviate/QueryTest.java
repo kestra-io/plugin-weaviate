@@ -37,14 +37,12 @@ public class QueryTest extends WeaviateTest {
 
         List<Map<String, Object>> parameters = List.of(Map.of("title", "test success"));
 
-        BatchCreate.Output batchOutput = BatchCreate.builder()
+        BatchCreate.builder()
             .url(URL)
             .className(CLASS_NAME)
             .objects(parameters)
             .build()
             .run(runContext);
-
-        assertThat(batchOutput.getCreatedCount(), is(1));
 
         FetchOutput queryOutput = Query.builder()
             .url(URL)
@@ -83,14 +81,12 @@ public class QueryTest extends WeaviateTest {
             Map.of("title", "test success 2")
         );
 
-        BatchCreate.Output batchOutput = BatchCreate.builder()
+        BatchCreate.builder()
             .url(URL)
             .className(CLASS_NAME)
             .objects(objectsToCreate)
             .build()
             .run(runContext);
-
-        assertThat(batchOutput.getCreatedCount(), is(2));
 
         FetchOutput queryOutput = Query.builder()
             .url(URL)
@@ -118,14 +114,12 @@ public class QueryTest extends WeaviateTest {
             Map.of("title", "test success 2")
         );
 
-        BatchCreate.Output batchOutput = BatchCreate.builder()
+        BatchCreate.builder()
             .url(URL)
             .className(CLASS_NAME)
             .objects(objectsToCreate)
             .build()
             .run(runContext);
-
-        assertThat(batchOutput.getCreatedCount(), is(2));
 
         FetchOutput queryOutput = Query.builder()
             .url(URL)

@@ -23,28 +23,26 @@ public class DeleteTest extends WeaviateTest {
 
         List<Map<String, Object>> parameters = List.of(Map.of("title", "test success"));
 
-        BatchCreate.Output batchOutput = BatchCreate.builder()
+        BatchCreate.builder()
             .url(URL)
             .className(CLASS_NAME)
             .objects(parameters)
             .build()
             .run(runContext);
 
-        assertThat(batchOutput.getCreatedCount(), is(1));
-
         FetchOutput queryOutput = Query.builder()
             .url(URL)
             .query("""
-                {
-                       Get {
-                         %s {
-                           _additional {
-                             id
-                           }
-                         }
-                       }
-                     }
-                """.formatted(CLASS_NAME))
+                   {
+                          Get {
+                            %s {
+                              _additional {
+                                id
+                              }
+                            }
+                          }
+                        }
+                   """.formatted(CLASS_NAME))
             .fetchType(FetchType.FETCH_ONE)
             .build()
             .run(runContext);
@@ -110,14 +108,12 @@ public class DeleteTest extends WeaviateTest {
             )
         );
 
-        BatchCreate.Output batchOutput = BatchCreate.builder()
+        BatchCreate.builder()
             .url(URL)
             .className(CLASS_NAME)
             .objects(createdObjects)
             .build()
             .run(runContext);
-
-        assertThat(batchOutput.getCreatedCount(), is(3));
 
         Delete.Output deleteOutput = Delete.builder()
             .url(URL)

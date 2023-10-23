@@ -1,5 +1,8 @@
 package io.kestra.plugin.weaviate;
 
+import io.kestra.core.models.tasks.VoidOutput;
+import io.kestra.core.models.tasks.common.FetchOutput;
+import io.kestra.core.models.tasks.common.FetchType;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.runners.RunContextFactory;
 import io.kestra.core.storages.StorageInterface;
@@ -14,8 +17,7 @@ import java.util.Map;
 import java.util.Objects;
 
 import static org.hamcrest.MatcherAssert.assertThat;
-import static org.hamcrest.Matchers.is;
-import static org.hamcrest.Matchers.notNullValue;
+import static org.hamcrest.Matchers.*;
 
 public class BatchCreateTest extends WeaviateTest {
     @Inject
@@ -30,17 +32,28 @@ public class BatchCreateTest extends WeaviateTest {
 
         List<Map<String, Object>> objectsToCreate = List.of(Map.of("title", "{{title}}"));
 
-        BatchCreate.Output batchOutput = BatchCreate.builder()
+        BatchCreate.builder()
             .url(URL)
             .className(CLASS_NAME)
             .objects(objectsToCreate)
             .build()
             .run(runContext);
 
-        assertThat(batchOutput.getCreatedCount(), is(1));
-        assertThat(batchOutput.getUri(), notNullValue());
+        String query = """
+                           {
+                             Get {
+                               %s {
+                                   title
+                               }
+                             }
+                           }""".formatted(CLASS_NAME);
 
-        assertThat(readObjectsFromStream(runContext.uriToInputStream(batchOutput.getUri())), is(List.of(Map.of("title", "test success"))));
+        FetchOutput output = Query.builder().fetchType(FetchType.STORE).url(URL).query(query).build().run(runContext);
+
+        assertThat(output.getSize(), is(1L));
+        assertThat(output.getUri(), notNullValue());
+
+        assertThat(readObjectsFromStream(runContext.uriToInputStream(output.getUri())), is(List.of(Map.of("WeaviateTest", Map.of("title", "test success")))));
     }
 
     @Test
@@ -56,16 +69,29 @@ public class BatchCreateTest extends WeaviateTest {
         );
 
         RunContext runContext = runContextFactory.of(Map.of("uri", uri.toString()));
-        BatchCreate.Output batchOutput = BatchCreate.builder()
+        VoidOutput batchOutput = BatchCreate.builder()
             .url(URL)
             .className(CLASS_NAME)
             .objects("{{uri}}")
             .build()
             .run(runContext);
 
-        assertThat(batchOutput.getCreatedCount(), is(2));
-        assertThat(batchOutput.getUri(), notNullValue());
+        String query = """
+                           {
+                             Get {
+                               %s {
+                                   title
+                               }
+                             }
+                           }""".formatted(CLASS_NAME);
 
-        assertThat(readObjectsFromStream(runContext.uriToInputStream(batchOutput.getUri())), is(readObjectsFromStream(resource.openStream())));
+        FetchOutput output = Query.builder().fetchType(FetchType.STORE).url(URL).query(query).build().run(runContext);
+
+        assertThat(output.getSize(), is(2L));
+        assertThat(output.getUri(), notNullValue());
+
+        List<Map> actual = readObjectsFromStream(runContext.uriToInputStream(output.getUri())).stream().map(map -> (Map) map.get("WeaviateTest")).toList();
+        List<Map> maps = readObjectsFromStream(resource.openStream());
+        assertThat(actual, is(maps));
     }
 }

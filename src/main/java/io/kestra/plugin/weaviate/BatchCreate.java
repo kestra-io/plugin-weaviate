@@ -4,6 +4,9 @@ import io.kestra.core.models.annotations.Example;
 import io.kestra.core.models.annotations.Plugin;
 import io.kestra.core.models.annotations.PluginProperty;
 import io.kestra.core.models.tasks.RunnableTask;
+import io.kestra.core.models.tasks.VoidOutput;
+import io.kestra.core.runners.RunContext;
+import io.kestra.core.serializers.FileSerde;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.serializers.FileSerde;
 import io.kestra.core.utils.Rethrow;
@@ -80,7 +83,7 @@ import static io.kestra.core.utils.Rethrow.throwFunction;
         )
     }
 )
-public class BatchCreate extends WeaviateConnection implements RunnableTask<BatchCreate.Output> {
+public class BatchCreate extends WeaviateConnection implements RunnableTask<VoidOutput> {
 
     @Schema(
         title = "Class name where you want to insert data"
@@ -100,7 +103,7 @@ public class BatchCreate extends WeaviateConnection implements RunnableTask<Batc
     private Object objects;
 
     @Override
-    public BatchCreate.Output run(RunContext runContext) throws Exception {
+    public VoidOutput run(RunContext runContext) throws Exception {
         WeaviateClient client = connect(runContext);
 
         List<WeaviateObject> weaviateObjects = new ArrayList<>();
@@ -143,49 +146,6 @@ public class BatchCreate extends WeaviateConnection implements RunnableTask<Batc
             throw new IOException(message);
         }
 
-        ObjectGetResponse[] responses = result.getResult();
-        return Output.builder()
-            .uri(store(responses, runContext))
-            .createdCount(result.getResult().length)
-            .build();
-    }
-
-    private URI store(ObjectGetResponse[] responses, RunContext runContext) throws IOException {
-        File tempFile = runContext.tempFile(".ion").toFile();
-        try (
-            BufferedWriter fileWriter = new BufferedWriter(new FileWriter(tempFile));
-            OutputStream outputStream = new FileOutputStream(tempFile)
-        ) {
-            List<Map.Entry<String, Object>> data = Arrays.stream(responses)
-                .map(ObjectGetResponse::getProperties)
-                .map(Map::entrySet)
-                .flatMap(Collection::stream)
-                .toList();
-
-            for (Map.Entry<String, Object> row : data) {
-                FileSerde.write(outputStream, row);
-            }
-
-            fileWriter.flush();
-        }
-
-        return runContext.putTempFile(tempFile);
-    }
-
-    @Getter
-    @Builder
-    public static class Output implements io.kestra.core.models.tasks.Output {
-
-        @Schema(
-            title = "The URI of stored data",
-            description = "The contents of the file will be the data ingested into Weaviate."
-        )
-        private URI uri;
-
-        @Schema(
-            title = "The number of created objects"
-        )
-        private int createdCount;
-
+        return null;
     }
 }
