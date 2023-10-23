@@ -11,7 +11,7 @@ import java.util.List;
 import java.util.Map;
 
 import static org.hamcrest.MatcherAssert.assertThat;
-import static org.hamcrest.Matchers.*;
+import static org.hamcrest.Matchers.is;
 
 public class DeleteTest extends WeaviateTest {
     @Inject
@@ -23,17 +23,15 @@ public class DeleteTest extends WeaviateTest {
 
         List<Map<String, Object>> parameters = List.of(Map.of("title", "test success"));
 
-        BatchCreate.builder()
-            .scheme(SCHEME)
-            .host(HOST)
+        VoidOutput batchOutput = BatchCreate.builder()
+            .url(URL)
             .className(CLASS_NAME)
             .objects(parameters)
             .build()
             .run(runContext);
 
         FetchOutput queryOutput = Query.builder()
-            .scheme(SCHEME)
-            .host(HOST)
+            .url(URL)
             .query("""
                    {
                           Get {
@@ -54,8 +52,7 @@ public class DeleteTest extends WeaviateTest {
         String id = (String) ((Map<String, Object>) queryOutput.getRow().get("_additional")).get("id");
 
         Delete.Output deleteOutput = Delete.builder()
-            .scheme(SCHEME)
-            .host(HOST)
+            .url(URL)
             .className(CLASS_NAME)
             .id(id)
             .build()
@@ -67,19 +64,18 @@ public class DeleteTest extends WeaviateTest {
         assertThat(deleteOutput.getDeletedCount(), is(1L));
 
         queryOutput = Query.builder()
-            .scheme(SCHEME)
-            .host(HOST)
+            .url(URL)
             .query("""
-                      {
-                        Get {
-                            %s {
-                              _additional {
-                                id
-                              }
-                            }
-                        }
-                      }
-                   """.formatted(CLASS_NAME))
+                   {
+                     Get {
+                         %s {
+                           _additional {
+                             id
+                           }
+                         }
+                     }
+                   }
+                """.formatted(CLASS_NAME))
             .fetchType(FetchType.FETCH)
             .build()
             .run(runContext);
@@ -112,17 +108,15 @@ public class DeleteTest extends WeaviateTest {
             )
         );
 
-        BatchCreate.builder()
-            .scheme(SCHEME)
-            .host(HOST)
+        VoidOutput batchOutput = BatchCreate.builder()
+            .url(URL)
             .className(CLASS_NAME)
             .objects(createdObjects)
             .build()
             .run(runContext);
 
         Delete.Output deleteOutput = Delete.builder()
-            .scheme(SCHEME)
-            .host(HOST)
+            .url(URL)
             .className(CLASS_NAME)
             .filter(Map.of(
                 "title", "success",
@@ -139,19 +133,18 @@ public class DeleteTest extends WeaviateTest {
         assertThat(deleteOutput.getDeletedCount(), is(1L));
 
         FetchOutput queryOutput = Query.builder()
-            .scheme(SCHEME)
-            .host(HOST)
+            .url(URL)
             .query("""
-                      {
-                        Get {
-                            %s {
-                              _additional {
-                                id
-                              }
-                            }
-                        }
-                      }
-                   """.formatted(CLASS_NAME))
+                   {
+                     Get {
+                         %s {
+                           _additional {
+                             id
+                           }
+                         }
+                     }
+                   }
+                """.formatted(CLASS_NAME))
             .fetchType(FetchType.FETCH)
             .build()
             .run(runContext);
@@ -159,8 +152,7 @@ public class DeleteTest extends WeaviateTest {
         assertThat(queryOutput.getSize(), is(2L));
 
         deleteOutput = Delete.builder()
-            .scheme(SCHEME)
-            .host(HOST)
+            .url(URL)
             .className(CLASS_NAME)
             .filter(Map.of(
                 "title", "success"
@@ -173,19 +165,18 @@ public class DeleteTest extends WeaviateTest {
         assertThat(deleteOutput.getDeletedCount(), is(2L));
 
         queryOutput = Query.builder()
-            .scheme(SCHEME)
-            .host(HOST)
+            .url(URL)
             .query("""
-                      {
-                        Get {
-                            %s {
-                              _additional {
-                                id
-                              }
-                            }
-                        }
-                      }
-                   """.formatted(CLASS_NAME))
+                   {
+                     Get {
+                         %s {
+                           _additional {
+                             id
+                           }
+                         }
+                     }
+                   }
+                """.formatted(CLASS_NAME))
             .fetchType(FetchType.FETCH)
             .build()
             .run(runContext);

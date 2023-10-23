@@ -30,18 +30,17 @@ import java.util.stream.Collectors;
 @Getter
 @NoArgsConstructor
 @Schema(
-    title = "Delete request to Weaviate database."
+    title = "Delete specific objects in a Weaviate database."
 )
 @Plugin(
     examples = {
         @Example(
-            title = "Send delete request to a Weaviate database. Id or properties should be specified.",
+            title = "Send delete request to a Weaviate database. Use object ID or other properties.",
             code = {
-                "host: localhost:8080",
-                "apiKey: some_api_key",
+                "uri: localhost:8080",
                 "className: WeaviateObject",
                 "filter:\n" +
-                    "fieldName: field value to be deleted by"
+                    "  fieldName: field value to be deleted by"
             }
         )
     }
@@ -55,7 +54,7 @@ public class Delete extends WeaviateConnection implements RunnableTask<Delete.Ou
     private String className;
 
     @Schema(
-        title = "id of object to delete"
+        title = "Id of the object to delete"
     )
     @PluginProperty(dynamic = true)
     private String id;
@@ -86,7 +85,7 @@ public class Delete extends WeaviateConnection implements RunnableTask<Delete.Ou
         }
 
         if (this.filter == null) {
-            throw new IllegalStateException("No properties or id were specified");
+            throw new IllegalStateException("No properties or IDs were specified");
         }
 
 
@@ -151,12 +150,12 @@ public class Delete extends WeaviateConnection implements RunnableTask<Delete.Ou
     public static class Output implements io.kestra.core.models.tasks.Output {
 
         @Schema(
-            title = "Class name of deleted object"
+            title = "Class name of the deleted object"
         )
         private String className;
 
         @Schema(
-            title = "If the delete was successful"
+            title = "Whether the delete operation was successful"
         )
         private Boolean success;
 
