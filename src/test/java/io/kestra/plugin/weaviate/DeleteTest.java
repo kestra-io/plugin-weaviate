@@ -23,7 +23,7 @@ public class DeleteTest extends WeaviateTest {
 
         List<Map<String, Object>> parameters = List.of(Map.of("title", "test success"));
 
-        VoidOutput batchOutput = BatchCreate.builder()
+        BatchCreate.builder()
             .url(URL)
             .className(CLASS_NAME)
             .objects(parameters)
@@ -108,7 +108,7 @@ public class DeleteTest extends WeaviateTest {
             )
         );
 
-        VoidOutput batchOutput = BatchCreate.builder()
+        BatchCreate.builder()
             .url(URL)
             .className(CLASS_NAME)
             .objects(createdObjects)
