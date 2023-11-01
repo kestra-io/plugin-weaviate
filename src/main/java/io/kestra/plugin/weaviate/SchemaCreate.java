@@ -32,14 +32,24 @@ import java.util.stream.Collectors;
     examples = {
         @Example(
             title = "Send schema creation request to a Weaviate database",
-            code = {
-                "uri: localhost:8080",
-                "className: WeaviateObject",
-                "parameters:\n" +
-                "  fieldName:\n" +
-                "    - text",
-                "    - string"
-            }
+            full = true,
+            code = """
+                id: create_weaviate_schema
+                namespace: dev
+
+                tasks:
+                  - id: schema
+                    type: io.kestra.plugin.weaviate.SchemaCreate
+                    url: "https://demo-cluster-id.weaviate.network"
+                    apiKey: "{{ secret('WEAVIATE_API_KEY') }}"
+                    className: Movies
+                    fields:
+                      name:
+                        - string
+                      description:
+                        - string
+                      category:
+                        - string"""
         )
     }
 )
