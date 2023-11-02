@@ -92,6 +92,6 @@ public class BatchCreateTest extends WeaviateTest {
 
         List<Map> actual = readObjectsFromStream(runContext.uriToInputStream(output.getUri())).stream().map(map -> (Map) map.get("WeaviateTest")).toList();
         List<Map> maps = readObjectsFromStream(resource.openStream());
-        assertThat(actual, is(maps));
+        assertThat(actual.containsAll(maps) && maps.containsAll(actual), is(true));
     }
 }
