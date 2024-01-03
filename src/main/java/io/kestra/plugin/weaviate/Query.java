@@ -17,8 +17,8 @@ import io.weaviate.client.v1.graphql.model.GraphQLResponse;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
 
-import javax.validation.constraints.NotBlank;
-import javax.validation.constraints.NotNull;
+import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
 import java.io.*;
 import java.net.URI;
 import java.util.*;
