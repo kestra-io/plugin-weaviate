@@ -16,7 +16,7 @@ import io.weaviate.client.v1.filters.WhereFilter;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
 
-import javax.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotBlank;
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.Date;

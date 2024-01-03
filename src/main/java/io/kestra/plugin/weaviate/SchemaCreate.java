@@ -14,7 +14,7 @@ import io.weaviate.client.v1.schema.model.WeaviateClass;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
 
-import javax.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotBlank;
 import java.io.IOException;
 import java.util.List;
 import java.util.Map;
