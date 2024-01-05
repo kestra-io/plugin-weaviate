@@ -7,10 +7,6 @@ import io.kestra.core.models.tasks.RunnableTask;
 import io.kestra.core.models.tasks.VoidOutput;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.serializers.FileSerde;
-import io.kestra.core.runners.RunContext;
-import io.kestra.core.serializers.FileSerde;
-import io.reactivex.BackpressureStrategy;
-import io.reactivex.Flowable;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.weaviate.client.WeaviateClient;
 import io.weaviate.client.base.Result;
@@ -22,6 +18,9 @@ import lombok.*;
 import lombok.experimental.SuperBuilder;
 
 import jakarta.validation.constraints.NotNull;
+import reactor.core.publisher.Flux;
+import reactor.core.publisher.FluxSink;
+
 import java.io.*;
 import java.net.URI;
 import java.util.*;
@@ -119,13 +118,13 @@ public class BatchCreate extends WeaviateConnection implements RunnableTask<Void
             try (BufferedReader reader = new BufferedReader(new InputStreamReader(
                 runContext.uriToInputStream(URI.create(runContext.render(uri)))
             ))) {
-                weaviateObjects = Flowable.create(FileSerde.reader(reader, Map.class), BackpressureStrategy.BUFFER)
-                    .map(map -> WeaviateObject.builder()
+                weaviateObjects = Flux.create(FileSerde.reader(reader, Map.class), FluxSink.OverflowStrategy.BUFFER)
+                    .map(throwFunction(map -> WeaviateObject.builder()
                         .id(UUID.randomUUID().toString())
                         .className(runContext.render(className))
                         .properties(map)
                         .build()
-                    ).toList().blockingGet();
+                    )).collectList().block();
             }
         }
 
