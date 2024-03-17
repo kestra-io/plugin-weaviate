@@ -1,7 +1,7 @@
 version: '3.4'
 services:
   weaviate:
-    image: semitechnologies/weaviate:1.21.3
+    image: cr.weaviate.io/semitechnologies/weaviate:1.21.3
     container_name: weaviate
     ports:
       - 51525:8080
