@@ -37,7 +37,7 @@ import java.util.stream.Collectors;
         @Example(
             title = "Send delete request to a Weaviate database. Use object ID or other properties.",
             code = {
-                "uri: localhost:8080",
+                "url: https://demo-cluster-id.weaviate.network",
                 "className: WeaviateObject",
                 "filter:\n" +
                     "  fieldName: field value to be deleted by"
