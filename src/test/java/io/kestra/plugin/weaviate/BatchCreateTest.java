@@ -53,7 +53,7 @@ public class BatchCreateTest extends WeaviateTest {
         assertThat(output.getSize(), is(1L));
         assertThat(output.getUri(), notNullValue());
 
-        assertThat(readObjectsFromStream(runContext.uriToInputStream(output.getUri())), is(List.of(Map.of("WeaviateTest", Map.of("title", "test success")))));
+        assertThat(readObjectsFromStream(runContext.storage().getFile(output.getUri())), is(List.of(Map.of("WeaviateTest", Map.of("title", "test success")))));
     }
 
     @Test
@@ -90,7 +90,7 @@ public class BatchCreateTest extends WeaviateTest {
         assertThat(output.getSize(), is(2L));
         assertThat(output.getUri(), notNullValue());
 
-        List<Map> actual = readObjectsFromStream(runContext.uriToInputStream(output.getUri())).stream().map(map -> (Map) map.get("WeaviateTest")).toList();
+        List<Map> actual = readObjectsFromStream(runContext.storage().getFile(output.getUri())).stream().map(map -> (Map) map.get("WeaviateTest")).toList();
         List<Map> maps = readObjectsFromStream(resource.openStream());
         assertThat(actual.containsAll(maps) && maps.containsAll(actual), is(true));
     }

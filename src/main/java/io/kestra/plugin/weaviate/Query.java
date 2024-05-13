@@ -167,7 +167,7 @@ public class Query extends WeaviateConnection implements RunnableTask<FetchOutpu
             fileWriter.flush();
         }
 
-        return runContext.putTempFile(tempFile);
+        return runContext.storage().putFile(tempFile);
     }
 
     // Response structure:
