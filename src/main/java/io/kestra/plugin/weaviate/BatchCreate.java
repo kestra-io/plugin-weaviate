@@ -68,7 +68,7 @@ import static io.kestra.core.utils.Rethrow.throwFunction;
 
                 tasks:
                   - id: extract
-                    type: io.kestra.plugin.fs.http.Download
+                    type: io.kestra.plugin.core.http.Download
                     uri: https://huggingface.co/datasets/kestra/datasets/raw/main/ion/ingest.ion
 
                   - id: batch_insert
