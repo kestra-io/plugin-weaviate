@@ -1,7 +1,7 @@
 package io.kestra.plugin.weaviate;
 
 import io.kestra.core.serializers.FileSerde;
-import io.micronaut.test.extensions.junit5.annotation.MicronautTest;
+import io.kestra.core.junit.annotations.KestraTest;
 import io.weaviate.client.Config;
 import io.weaviate.client.WeaviateClient;
 import org.junit.jupiter.api.AfterEach;
@@ -14,7 +14,7 @@ import java.io.InputStreamReader;
 import java.util.List;
 import java.util.Map;
 
-@MicronautTest
+@KestraTest
 public abstract class WeaviateTest {
     protected static final String HOST = "localhost:51525";
     protected static final String URL = "http://localhost:51525";
