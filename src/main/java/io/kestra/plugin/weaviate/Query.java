@@ -156,7 +156,7 @@ public class Query extends WeaviateConnection implements RunnableTask<FetchOutpu
     }
 
     private URI store(List<Object> data, RunContext runContext) throws IOException {
-        File tempFile = runContext.tempFile(".ion").toFile();
+        File tempFile = runContext.workingDir().createTempFile(".ion").toFile();
         try (BufferedWriter fileWriter = new BufferedWriter(new FileWriter(tempFile));
              OutputStream outputStream = new FileOutputStream(tempFile)) {
 
