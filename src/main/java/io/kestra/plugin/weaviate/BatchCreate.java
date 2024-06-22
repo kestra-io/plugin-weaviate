@@ -44,7 +44,7 @@ import static io.kestra.core.utils.Rethrow.throwFunction;
             full = true,
             code = """
                 id: weaviate_batch_load
-                namespace: dev
+                namespace: company.team
 
                 tasks:
                   - id: batch_load
@@ -64,7 +64,7 @@ import static io.kestra.core.utils.Rethrow.throwFunction;
             full = true,
             code = """
                 id: weaviate_batch_insert
-                namespace: dev
+                namespace: company.team
 
                 tasks:
                   - id: extract
