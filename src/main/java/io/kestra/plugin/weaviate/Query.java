@@ -40,7 +40,7 @@ import java.util.stream.Stream;
             full = true,
             code = """
                 id: weaviate_query
-                namespace: dev
+                namespace: company.team
 
                 tasks:
                   - id: query
@@ -65,7 +65,7 @@ import java.util.stream.Stream;
             full = true,
             code = """
                 id: weaviate_generative_search
-                namespace: dev
+                namespace: company.team
 
                 tasks:
                   - id: query

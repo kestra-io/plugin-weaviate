@@ -35,7 +35,7 @@ import java.util.stream.Collectors;
             full = true,
             code = """
                 id: create_weaviate_schema
-                namespace: dev
+                namespace: company.team
 
                 tasks:
                   - id: schema
