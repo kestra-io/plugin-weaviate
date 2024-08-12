@@ -5,8 +5,6 @@ import io.kestra.core.junit.annotations.KestraTest;
 import io.weaviate.client.Config;
 import io.weaviate.client.WeaviateClient;
 import org.junit.jupiter.api.AfterEach;
-import reactor.core.publisher.Flux;
-import reactor.core.publisher.FluxSink;
 
 import java.io.BufferedReader;
 import java.io.InputStream;
@@ -31,7 +29,7 @@ public abstract class WeaviateTest {
 
     protected List<Map> readObjectsFromStream(InputStream inputStream) throws Exception {
         try (BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream))) {
-            return Flux.create(FileSerde.reader(reader, Map.class), FluxSink.OverflowStrategy.BUFFER).collectList().block();
+            return FileSerde.readAll(reader, Map.class).collectList().block();
         }
     }
 }
