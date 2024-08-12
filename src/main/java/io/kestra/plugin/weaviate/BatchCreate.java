@@ -118,7 +118,7 @@ public class BatchCreate extends WeaviateConnection implements RunnableTask<Void
             try (BufferedReader reader = new BufferedReader(new InputStreamReader(
                 runContext.storage().getFile(URI.create(runContext.render(uri)))
             ))) {
-                weaviateObjects = Flux.create(FileSerde.reader(reader, Map.class), FluxSink.OverflowStrategy.BUFFER)
+                weaviateObjects = FileSerde.readAll(reader, Map.class)
                     .map(throwFunction(map -> WeaviateObject.builder()
                         .id(UUID.randomUUID().toString())
                         .className(runContext.render(className))
