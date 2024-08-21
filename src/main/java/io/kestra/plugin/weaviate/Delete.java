@@ -84,19 +84,23 @@ public class Delete extends WeaviateConnection implements RunnableTask<Delete.Ou
                 .build();
         }
 
-        if (this.filter == null) {
-            throw new IllegalStateException("No properties or IDs were specified");
+        WhereFilter filter = null;
+        if (this.filter != null) {
+            filter = WhereFilter.builder()
+                .operator(Operator.And)
+                .operands(
+                    runContext.render(this.filter).entrySet().stream()
+                        .map(e -> toWhereFilter(e.getKey(), e.getValue()))
+                        .toArray(WhereFilter[]::new)
+                )
+                .build();
+        } else {
+            filter = WhereFilter.builder()
+                .path("_id")
+                .operator(Operator.NotEqual)
+                .valueText("")
+                .build();
         }
-
-
-        WhereFilter filter = WhereFilter.builder()
-            .operator(Operator.And)
-            .operands(
-                runContext.render(this.filter).entrySet().stream()
-                    .map(e -> toWhereFilter(e.getKey(), e.getValue()))
-                    .toArray(WhereFilter[]::new)
-            )
-            .build();
 
         Result<BatchDeleteResponse> result = client.batch()
             .objectsBatchDeleter()
