@@ -183,4 +183,96 @@ public class DeleteTest extends WeaviateTest {
 
         assertThat(queryOutput.getSize(), is(0L));
     }
+
+    @Test
+    public void testDeleteAll() throws Exception {
+        RunContext runContext = runContextFactory.of();
+
+        var createdObjects = List.of(
+            Map.of(
+                "name", "The Shawshank Redemption",
+                "description", "Over the course of several years, two convicts form a friendship, seeking consolation and, eventually, redemption through basic compassion.",
+                "category", "Drama"
+            ),
+            Map.of(
+                "name", "The Godfather",
+                "description", "Don Vito Corleone, head of a mafia family, decides to hand over his empire to his youngest son Michael. However, his decision unintentionally puts the lives of his loved ones in grave danger.",
+                "category", "Crime"
+            ),
+            Map.of(
+                "name", "The Dark Knight",
+                "description", "When the menace known as the Joker wreaks havoc and chaos on the people of Gotham, Batman must accept one of the greatest psychological and physical tests of his ability to fight injustice.",
+                "category", "Action"
+            )
+        );
+
+        BatchCreate.builder()
+            .url(URL)
+            .className(CLASS_NAME)
+            .objects(createdObjects)
+            .build()
+            .run(runContext);
+
+        Delete.Output deleteOutput = Delete.builder()
+            .url(URL)
+            .className(CLASS_NAME)
+            .filter(Map.of(
+                "name", "The Shawshank Redemption"
+            ))
+            .build()
+            .run(runContext);
+
+        assertThat(true, is(deleteOutput.getSuccess()));
+
+        assertThat(CLASS_NAME, is(deleteOutput.getClassName()));
+        assertThat(deleteOutput.getDeletedCount(), is(1L));
+
+        FetchOutput queryOutput = Query.builder()
+            .url(URL)
+            .query("""
+                   {
+                     Get {
+                         %s {
+                           _additional {
+                             id
+                           }
+                         }
+                     }
+                   }
+                """.formatted(CLASS_NAME))
+            .fetchType(FetchType.FETCH)
+            .build()
+            .run(runContext);
+
+        assertThat(queryOutput.getSize(), is(2L));
+
+        deleteOutput = Delete.builder()
+            .url(URL)
+            .className(CLASS_NAME)
+            .build()
+            .run(runContext);
+
+        assertThat(true, is(deleteOutput.getSuccess()));
+
+        assertThat(deleteOutput.getDeletedCount(), is(2L));
+
+        queryOutput = Query.builder()
+            .url(URL)
+            .query("""
+                   {
+                     Get {
+                         %s {
+                           _additional {
+                             id
+                           }
+                         }
+                     }
+                   }
+                """.formatted(CLASS_NAME))
+            .fetchType(FetchType.FETCH)
+            .build()
+            .run(runContext);
+
+        assertThat(queryOutput.getSize(), is(0L));
+    }
 }
