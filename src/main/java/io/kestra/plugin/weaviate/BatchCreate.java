@@ -40,7 +40,7 @@ import static io.kestra.core.utils.Rethrow.throwFunction;
 @Plugin(
     examples = {
         @Example(
-            title = "Send batch object creation request to a Weaviate database",
+            title = "Send batch object creation request to a Weaviate database.",
             full = true,
             code = """
                 id: weaviate_batch_load
@@ -60,7 +60,7 @@ import static io.kestra.core.utils.Rethrow.throwFunction;
                 """
         ),
         @Example(
-            title = "Send batch object creation request to a Weaviate database using an ION input file e.g. passed from output of another task",
+            title = "Send batch object creation request to a Weaviate database using an ION input file e.g. passed from output of another task.",
             full = true,
             code = """
                 id: weaviate_batch_insert

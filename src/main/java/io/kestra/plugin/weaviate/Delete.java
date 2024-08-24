@@ -36,12 +36,19 @@ import java.util.stream.Collectors;
     examples = {
         @Example(
             title = "Send delete request to a Weaviate database. Use object ID or other properties.",
-            code = {
-                "url: https://demo-cluster-id.weaviate.network",
-                "className: WeaviateObject",
-                "filter:\n" +
-                    "  fieldName: field value to be deleted by"
-            }
+            full = true,
+            code = """
+                   id: weaviate_delete_flow
+                   namespace: company.team
+
+                   tasks:
+                     - id: delete
+                       type: io.kestra.plugin.weaviate.Delete
+                       url: https://demo-cluster-id.weaviate.network
+                       className: WeaviateObject
+                       filter:
+                         fieldName: field value to be deleted by
+                   """
         )
     }
 )

@@ -31,7 +31,7 @@ import java.util.stream.Collectors;
 @Plugin(
     examples = {
         @Example(
-            title = "Send schema creation request to a Weaviate database",
+            title = "Send schema creation request to a Weaviate database.",
             full = true,
             code = """
                 id: create_weaviate_schema
