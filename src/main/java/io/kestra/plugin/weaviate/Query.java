@@ -38,7 +38,7 @@ import java.util.stream.Stream;
 @Plugin(
     examples = {
         @Example(
-            title = "Execute a GraphQL query to fetch data from a Weaviate database",
+            title = "Execute a GraphQL query to fetch data from a Weaviate database.",
             full = true,
             code = """
                 id: weaviate_query
