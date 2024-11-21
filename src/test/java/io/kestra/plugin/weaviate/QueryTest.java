@@ -132,7 +132,7 @@ public class QueryTest extends WeaviateTest {
         assertThat(queryOutput.getRow(), is(nullValue()));
         assertThat(queryOutput.getRows(), is(nullValue()));
 
-        var queryOutputContent = readObjectsFromStream(storageInterface.get(null, queryOutput.getUri()));
+        var queryOutputContent = readObjectsFromStream(storageInterface.get(null, null, queryOutput.getUri()));
 
         assertThat(queryOutputContent, containsInAnyOrder(
             Map.of(CLASS_NAME, Map.of("title", "test success")),
