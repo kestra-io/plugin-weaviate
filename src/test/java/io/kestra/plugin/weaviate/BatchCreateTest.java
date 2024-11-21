@@ -64,6 +64,7 @@ public class BatchCreateTest extends WeaviateTest {
 
         URI uri = storageInterface.put(
             null,
+            null,
             new URI("/" + fileName),
             new FileInputStream(Objects.requireNonNull(resource).getFile())
         );
