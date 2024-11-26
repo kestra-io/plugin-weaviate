@@ -1,9 +1,10 @@
 package io.kestra.plugin.weaviate;
 
 import io.kestra.core.models.annotations.PluginProperty;
+import io.kestra.core.models.property.Property;
 import io.swagger.v3.oas.annotations.media.Schema;
-
 import jakarta.validation.constraints.NotBlank;
+
 import java.util.Map;
 
 public interface WeaviateConnectionInterface {
@@ -19,12 +20,10 @@ public interface WeaviateConnectionInterface {
         title = "API key to authenticate with a managed Weaviate cluster",
         description = "If not provided, the anonymous authentication scheme will be used."
     )
-    @PluginProperty(dynamic = true)
-    String getApiKey();
+    Property<String> getApiKey();
 
     @Schema(
         title = "Additional headers to add to the request e.g. to authenticate with OpenAI API"
     )
-    @PluginProperty(dynamic = true)
-    Map<String, String> getHeaders();
+    Property<Map<String, String>> getHeaders();
 }

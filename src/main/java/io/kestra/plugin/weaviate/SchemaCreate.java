@@ -11,10 +11,10 @@ import io.weaviate.client.base.Result;
 import io.weaviate.client.base.WeaviateErrorMessage;
 import io.weaviate.client.v1.schema.model.Property;
 import io.weaviate.client.v1.schema.model.WeaviateClass;
+import jakarta.validation.constraints.NotBlank;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
 
-import jakarta.validation.constraints.NotBlank;
 import java.io.IOException;
 import java.util.List;
 import java.util.Map;
@@ -66,14 +66,14 @@ public class SchemaCreate extends WeaviateConnection implements RunnableTask<Sch
         title = "Fields to add to the class",
         description = "Requires specified field name and a list of data types that will be stored in this field"
     )
-    @PluginProperty(dynamic = true)
-    private Map<String, List<String>> fields;
+    private io.kestra.core.models.property.Property<Map<String, List<String>>> fields;
 
     @Override
     public SchemaCreate.Output run(RunContext runContext) throws Exception {
         WeaviateClient client = connect(runContext);
 
-        List<Property> properties = fields.entrySet().stream()
+        List<Property> properties = runContext.render(fields).asMap(String.class, List.class)
+            .entrySet().stream()
             .map(SchemaCreate::buildProperty)
             .toList();
 

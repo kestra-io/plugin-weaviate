@@ -3,6 +3,7 @@ package io.kestra.plugin.weaviate;
 import io.kestra.core.models.annotations.Example;
 import io.kestra.core.models.annotations.Plugin;
 import io.kestra.core.models.annotations.PluginProperty;
+import io.kestra.core.models.property.Property;
 import io.kestra.core.models.tasks.RunnableTask;
 import io.kestra.core.models.tasks.common.FetchOutput;
 import io.kestra.core.models.tasks.common.FetchType;
@@ -14,14 +15,16 @@ import io.weaviate.client.base.Result;
 import io.weaviate.client.base.WeaviateErrorMessage;
 import io.weaviate.client.v1.graphql.model.GraphQLError;
 import io.weaviate.client.v1.graphql.model.GraphQLResponse;
-import lombok.*;
-import lombok.experimental.SuperBuilder;
-
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import lombok.*;
+import lombok.experimental.SuperBuilder;
 import reactor.core.publisher.Flux;
 
-import java.io.*;
+import java.io.BufferedWriter;
+import java.io.File;
+import java.io.FileWriter;
+import java.io.IOException;
 import java.net.URI;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -49,7 +52,7 @@ import java.util.stream.Stream;
                     type: io.kestra.plugin.weaviate.Query
                     url: https://demo-cluster-id.weaviate.network
                     apiKey: "{{ secret('WEAVIATE_API_KEY') }}"
-                    query: | 
+                    query: |
                       {
                         Get {
                           Question(limit: 5) {
@@ -74,9 +77,9 @@ import java.util.stream.Stream;
                     type: io.kestra.plugin.weaviate.Query
                     url: https://demo-cluster-id.weaviate.network
                     apiKey: "{{ secret('WEAVIATE_API_KEY') }}"
-                    headers: 
+                    headers:
                       X-OpenAI-Api-Key: "{{ secret('OPENAI_API_KEY') }}"
-                    query: | 
+                    query: |
                       {
                         Get {
                           Question(limit: 5, nearText: {concepts: ["biology"]}) {
@@ -95,7 +98,6 @@ public class Query extends WeaviateConnection implements RunnableTask<FetchOutpu
     @Schema(
         title = "GraphQL query"
     )
-    @NotBlank
     @PluginProperty(dynamic = true)
     @NotBlank
     private String query;
@@ -107,10 +109,9 @@ public class Query extends WeaviateConnection implements RunnableTask<FetchOutpu
 			+ "STORE stores all rows in a file\n"
 			+ "NONE doesn't store any data. It's particularly useful when you execute DDL statements or run queries that insert data into another table e.g. using `SELECT ... INSERT INTO` statements."
 	)
-	@PluginProperty
 	@NotNull
 	@Builder.Default
-	protected FetchType fetchType = FetchType.STORE;
+	protected Property<FetchType> fetchType = Property.of(FetchType.STORE);
 
     @Override
     public FetchOutput run(RunContext runContext) throws Exception {
@@ -135,7 +136,8 @@ public class Query extends WeaviateConnection implements RunnableTask<FetchOutpu
 
         FetchOutput.FetchOutputBuilder outputBuilder = FetchOutput.builder();
 
-        return (switch (fetchType) {
+        FetchType renderedFetchType = runContext.render(fetchType).as(FetchType.class).orElseThrow();
+        return (switch (renderedFetchType) {
             case FETCH_ONE -> {
                 Map<String, Object> data = extractRow(result);
                 yield outputBuilder
@@ -147,7 +149,7 @@ public class Query extends WeaviateConnection implements RunnableTask<FetchOutpu
                 var rows = extractRows(result);
                 outputBuilder = outputBuilder.size((long) rows.size());
 
-                if(fetchType == FetchType.FETCH) {
+                if(FetchType.FETCH.equals(renderedFetchType)) {
                     yield outputBuilder.rows(rows).build();
                 } else {
                     yield outputBuilder.uri(store(rows, runContext)).build();

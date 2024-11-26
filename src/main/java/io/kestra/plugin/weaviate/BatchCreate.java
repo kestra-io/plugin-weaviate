@@ -2,7 +2,7 @@ package io.kestra.plugin.weaviate;
 
 import io.kestra.core.models.annotations.Example;
 import io.kestra.core.models.annotations.Plugin;
-import io.kestra.core.models.annotations.PluginProperty;
+import io.kestra.core.models.property.Property;
 import io.kestra.core.models.tasks.RunnableTask;
 import io.kestra.core.models.tasks.VoidOutput;
 import io.kestra.core.runners.RunContext;
@@ -14,16 +14,21 @@ import io.weaviate.client.base.WeaviateErrorMessage;
 import io.weaviate.client.v1.batch.api.ObjectsBatcher;
 import io.weaviate.client.v1.batch.model.ObjectGetResponse;
 import io.weaviate.client.v1.data.model.WeaviateObject;
-import lombok.*;
+import jakarta.validation.constraints.NotNull;
+import lombok.EqualsAndHashCode;
+import lombok.Getter;
+import lombok.NoArgsConstructor;
+import lombok.ToString;
 import lombok.experimental.SuperBuilder;
 
-import jakarta.validation.constraints.NotNull;
-import reactor.core.publisher.Flux;
-import reactor.core.publisher.FluxSink;
-
-import java.io.*;
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStreamReader;
 import java.net.URI;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 import static io.kestra.core.utils.Rethrow.throwFunction;
@@ -52,7 +57,7 @@ import static io.kestra.core.utils.Rethrow.throwFunction;
                     url: "https://demo-cluster-id.weaviate.network"
                     apiKey: "{{ secret('WEAVIATE_API_KEY') }}"
                     className: WeaviateDemo
-                    objects: 
+                    objects:
                       - textField: "some text"
                         numField: 24
                       - textField: "another text"
@@ -86,8 +91,7 @@ public class BatchCreate extends WeaviateConnection implements RunnableTask<Void
     @Schema(
         title = "Class name where you want to insert data"
     )
-    @PluginProperty(dynamic = true)
-    private String className;
+    private Property<String> className;
 
     @Schema(
         title = "Objects to create with their properties",
@@ -110,7 +114,7 @@ public class BatchCreate extends WeaviateConnection implements RunnableTask<Void
             weaviateObjects = ((List<Map<String, Object>>) objects).stream()
                 .map(throwFunction(param -> WeaviateObject.builder()
                     .id(UUID.randomUUID().toString())
-                    .className(className)
+                    .className(runContext.render(className).as(String.class).orElse(null))
                     .properties(runContext.render(param))
                     .build()
                 )).toList();
@@ -121,7 +125,7 @@ public class BatchCreate extends WeaviateConnection implements RunnableTask<Void
                 weaviateObjects = FileSerde.readAll(reader, Map.class)
                     .map(throwFunction(map -> WeaviateObject.builder()
                         .id(UUID.randomUUID().toString())
-                        .className(runContext.render(className))
+                        .className(runContext.render(className).as(String.class).orElse(null))
                         .properties(map)
                         .build()
                     )).collectList().block();

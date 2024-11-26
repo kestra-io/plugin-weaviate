@@ -3,6 +3,7 @@ package io.kestra.plugin.weaviate;
 import io.kestra.core.models.annotations.Example;
 import io.kestra.core.models.annotations.Plugin;
 import io.kestra.core.models.annotations.PluginProperty;
+import io.kestra.core.models.property.Property;
 import io.kestra.core.models.tasks.RunnableTask;
 import io.kestra.core.runners.RunContext;
 import io.swagger.v3.oas.annotations.media.Schema;
@@ -13,10 +14,10 @@ import io.weaviate.client.v1.batch.model.BatchDeleteOutput;
 import io.weaviate.client.v1.batch.model.BatchDeleteResponse;
 import io.weaviate.client.v1.filters.Operator;
 import io.weaviate.client.v1.filters.WhereFilter;
+import jakarta.validation.constraints.NotBlank;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
 
-import jakarta.validation.constraints.NotBlank;
 import java.io.IOException;
 import java.util.Arrays;
 import java.util.Date;
@@ -69,8 +70,7 @@ public class Delete extends WeaviateConnection implements RunnableTask<Delete.Ou
     @Schema(
         title = "Attributes to filter by for deletion"
     )
-    @PluginProperty(dynamic = true)
-    private Map<String, Object> filter;
+    private Property<Map<String, Object>> filter;
 
     @Override
     public Delete.Output run(RunContext runContext) throws Exception {
@@ -96,7 +96,9 @@ public class Delete extends WeaviateConnection implements RunnableTask<Delete.Ou
             filter = WhereFilter.builder()
                 .operator(Operator.And)
                 .operands(
-                    runContext.render(this.filter).entrySet().stream()
+                    runContext.render(this.filter).asMap(String.class, Object.class)
+                        .entrySet()
+                        .stream()
                         .map(e -> toWhereFilter(e.getKey(), e.getValue()))
                         .toArray(WhereFilter[]::new)
                 )

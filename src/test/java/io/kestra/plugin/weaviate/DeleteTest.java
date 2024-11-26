@@ -1,5 +1,6 @@
 package io.kestra.plugin.weaviate;
 
+import io.kestra.core.models.property.Property;
 import io.kestra.core.models.tasks.common.FetchOutput;
 import io.kestra.core.models.tasks.common.FetchType;
 import io.kestra.core.runners.RunContext;
@@ -25,7 +26,7 @@ public class DeleteTest extends WeaviateTest {
 
         BatchCreate.builder()
             .url(URL)
-            .className(CLASS_NAME)
+            .className(Property.of(CLASS_NAME))
             .objects(parameters)
             .build()
             .run(runContext);
@@ -43,7 +44,7 @@ public class DeleteTest extends WeaviateTest {
                           }
                         }
                    """.formatted(CLASS_NAME))
-            .fetchType(FetchType.FETCH_ONE)
+            .fetchType(Property.of(FetchType.FETCH_ONE))
             .build()
             .run(runContext);
 
@@ -76,7 +77,7 @@ public class DeleteTest extends WeaviateTest {
                      }
                    }
                 """.formatted(CLASS_NAME))
-            .fetchType(FetchType.FETCH)
+            .fetchType(Property.of(FetchType.FETCH))
             .build()
             .run(runContext);
 
@@ -110,7 +111,7 @@ public class DeleteTest extends WeaviateTest {
 
         BatchCreate.builder()
             .url(URL)
-            .className(CLASS_NAME)
+            .className(Property.of(CLASS_NAME))
             .objects(createdObjects)
             .build()
             .run(runContext);
@@ -118,12 +119,12 @@ public class DeleteTest extends WeaviateTest {
         Delete.Output deleteOutput = Delete.builder()
             .url(URL)
             .className(CLASS_NAME)
-            .filter(Map.of(
+            .filter(Property.of(Map.of(
                 "title", "success",
                 "description", "* description",
                 "length", 10,
                 "bool", true
-            ))
+            )))
             .build()
             .run(runContext);
 
@@ -145,7 +146,7 @@ public class DeleteTest extends WeaviateTest {
                      }
                    }
                 """.formatted(CLASS_NAME))
-            .fetchType(FetchType.FETCH)
+            .fetchType(Property.of(FetchType.FETCH))
             .build()
             .run(runContext);
 
@@ -154,9 +155,9 @@ public class DeleteTest extends WeaviateTest {
         deleteOutput = Delete.builder()
             .url(URL)
             .className(CLASS_NAME)
-            .filter(Map.of(
+            .filter(Property.of(Map.of(
                 "title", "success"
-            ))
+            )))
             .build()
             .run(runContext);
 
@@ -177,7 +178,7 @@ public class DeleteTest extends WeaviateTest {
                      }
                    }
                 """.formatted(CLASS_NAME))
-            .fetchType(FetchType.FETCH)
+            .fetchType(Property.of(FetchType.FETCH))
             .build()
             .run(runContext);
 
@@ -208,7 +209,7 @@ public class DeleteTest extends WeaviateTest {
 
         BatchCreate.builder()
             .url(URL)
-            .className(CLASS_NAME)
+            .className(Property.of(CLASS_NAME))
             .objects(createdObjects)
             .build()
             .run(runContext);
@@ -216,9 +217,9 @@ public class DeleteTest extends WeaviateTest {
         Delete.Output deleteOutput = Delete.builder()
             .url(URL)
             .className(CLASS_NAME)
-            .filter(Map.of(
+            .filter(Property.of(Map.of(
                 "name", "The Shawshank Redemption"
-            ))
+            )))
             .build()
             .run(runContext);
 
@@ -240,7 +241,7 @@ public class DeleteTest extends WeaviateTest {
                      }
                    }
                 """.formatted(CLASS_NAME))
-            .fetchType(FetchType.FETCH)
+            .fetchType(Property.of(FetchType.FETCH))
             .build()
             .run(runContext);
 
@@ -269,7 +270,7 @@ public class DeleteTest extends WeaviateTest {
                      }
                    }
                 """.formatted(CLASS_NAME))
-            .fetchType(FetchType.FETCH)
+            .fetchType(Property.of(FetchType.FETCH))
             .build()
             .run(runContext);
 

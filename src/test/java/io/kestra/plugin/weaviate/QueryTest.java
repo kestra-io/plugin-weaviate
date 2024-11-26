@@ -1,5 +1,6 @@
 package io.kestra.plugin.weaviate;
 
+import io.kestra.core.models.property.Property;
 import io.kestra.core.models.tasks.common.FetchOutput;
 import io.kestra.core.models.tasks.common.FetchType;
 import io.kestra.core.runners.RunContext;
@@ -39,7 +40,7 @@ public class QueryTest extends WeaviateTest {
 
         BatchCreate.builder()
             .url(URL)
-            .className(CLASS_NAME)
+            .className(Property.of(CLASS_NAME))
             .objects(parameters)
             .build()
             .run(runContext);
@@ -60,7 +61,7 @@ public class QueryTest extends WeaviateTest {
                        }
                      }
                 """.formatted(CLASS_NAME))
-            .fetchType(FetchType.FETCH_ONE)
+            .fetchType(Property.of(FetchType.FETCH_ONE))
             .build()
             .run(runContext);
 
@@ -83,7 +84,7 @@ public class QueryTest extends WeaviateTest {
 
         BatchCreate.builder()
             .url(URL)
-            .className(CLASS_NAME)
+            .className(Property.of(CLASS_NAME))
             .objects(objectsToCreate)
             .build()
             .run(runContext);
@@ -91,7 +92,7 @@ public class QueryTest extends WeaviateTest {
         FetchOutput queryOutput = Query.builder()
             .url(URL)
             .query(QUERY.formatted(CLASS_NAME))
-            .fetchType(FetchType.FETCH)
+            .fetchType(Property.of(FetchType.FETCH))
             .build()
             .run(runContext);
 
@@ -116,7 +117,7 @@ public class QueryTest extends WeaviateTest {
 
         BatchCreate.builder()
             .url(URL)
-            .className(CLASS_NAME)
+            .className(Property.of(CLASS_NAME))
             .objects(objectsToCreate)
             .build()
             .run(runContext);
@@ -124,7 +125,7 @@ public class QueryTest extends WeaviateTest {
         FetchOutput queryOutput = Query.builder()
             .url(URL)
             .query(QUERY.formatted(CLASS_NAME))
-            .fetchType(FetchType.STORE)
+            .fetchType(Property.of(FetchType.STORE))
             .build()
             .run(runContext);
 
