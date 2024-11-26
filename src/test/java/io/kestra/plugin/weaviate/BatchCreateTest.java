@@ -1,5 +1,6 @@
 package io.kestra.plugin.weaviate;
 
+import io.kestra.core.models.property.Property;
 import io.kestra.core.models.tasks.VoidOutput;
 import io.kestra.core.models.tasks.common.FetchOutput;
 import io.kestra.core.models.tasks.common.FetchType;
@@ -17,7 +18,8 @@ import java.util.Map;
 import java.util.Objects;
 
 import static org.hamcrest.MatcherAssert.assertThat;
-import static org.hamcrest.Matchers.*;
+import static org.hamcrest.Matchers.is;
+import static org.hamcrest.Matchers.notNullValue;
 
 public class BatchCreateTest extends WeaviateTest {
     @Inject
@@ -34,7 +36,7 @@ public class BatchCreateTest extends WeaviateTest {
 
         BatchCreate.builder()
             .url(URL)
-            .className(CLASS_NAME)
+            .className(Property.of(CLASS_NAME))
             .objects(objectsToCreate)
             .build()
             .run(runContext);
@@ -48,7 +50,7 @@ public class BatchCreateTest extends WeaviateTest {
                              }
                            }""".formatted(CLASS_NAME);
 
-        FetchOutput output = Query.builder().fetchType(FetchType.STORE).url(URL).query(query).build().run(runContext);
+        FetchOutput output = Query.builder().fetchType(Property.of(FetchType.STORE)).url(URL).query(query).build().run(runContext);
 
         assertThat(output.getSize(), is(1L));
         assertThat(output.getUri(), notNullValue());
@@ -72,7 +74,7 @@ public class BatchCreateTest extends WeaviateTest {
         RunContext runContext = runContextFactory.of(Map.of("uri", uri.toString()));
         VoidOutput batchOutput = BatchCreate.builder()
             .url(URL)
-            .className(CLASS_NAME)
+            .className(Property.of(CLASS_NAME))
             .objects("{{uri}}")
             .build()
             .run(runContext);
@@ -86,7 +88,7 @@ public class BatchCreateTest extends WeaviateTest {
                              }
                            }""".formatted(CLASS_NAME);
 
-        FetchOutput output = Query.builder().fetchType(FetchType.STORE).url(URL).query(query).build().run(runContext);
+        FetchOutput output = Query.builder().fetchType(Property.of(FetchType.STORE)).url(URL).query(query).build().run(runContext);
 
         assertThat(output.getSize(), is(2L));
         assertThat(output.getUri(), notNullValue());

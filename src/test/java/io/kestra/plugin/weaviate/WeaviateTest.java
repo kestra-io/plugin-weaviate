@@ -1,7 +1,7 @@
 package io.kestra.plugin.weaviate;
 
-import io.kestra.core.serializers.FileSerde;
 import io.kestra.core.junit.annotations.KestraTest;
+import io.kestra.core.serializers.FileSerde;
 import io.weaviate.client.Config;
 import io.weaviate.client.WeaviateClient;
 import org.junit.jupiter.api.AfterEach;
