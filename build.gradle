@@ -51,7 +51,7 @@ dependencies {
     compileOnly group: "io.kestra", name: "core", version: kestraVersion
 
     // libs included in the final jar
-    api group: 'io.weaviate', name: 'client', version: '4.8.3'
+    api group: 'io.weaviate', name: 'client', version: '5.0.0'
 }
 
 
