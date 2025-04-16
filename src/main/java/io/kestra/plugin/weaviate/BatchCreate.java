@@ -39,7 +39,7 @@ import static io.kestra.core.utils.Rethrow.throwFunction;
 @EqualsAndHashCode
 @NoArgsConstructor
 @Schema(
-    title = "Batch-insert data to a Weaviate database.",
+    title = "Batch-insert objects into a Weaviate database.",
     description = "Data can be either in an ION-serialized file format or as a list of key-value pairs. If the schema doesn't exist yet, it will be created automatically."
 )
 @Plugin(
