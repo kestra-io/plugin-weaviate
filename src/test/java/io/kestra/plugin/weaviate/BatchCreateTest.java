@@ -7,6 +7,7 @@ import io.kestra.core.models.tasks.common.FetchType;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.runners.RunContextFactory;
 import io.kestra.core.storages.StorageInterface;
+import io.kestra.core.tenant.TenantService;
 import jakarta.inject.Inject;
 import org.junit.jupiter.api.Test;
 
@@ -65,7 +66,7 @@ public class BatchCreateTest extends WeaviateTest {
         URL resource = BatchCreate.class.getClassLoader().getResource(fileName);
 
         URI uri = storageInterface.put(
-            null,
+            TenantService.MAIN_TENANT,
             null,
             new URI("/" + fileName),
             new FileInputStream(Objects.requireNonNull(resource).getFile())
