@@ -6,6 +6,7 @@ import io.kestra.core.models.tasks.common.FetchType;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.runners.RunContextFactory;
 import io.kestra.core.storages.StorageInterface;
+import io.kestra.core.tenant.TenantService;
 import jakarta.inject.Inject;
 import org.junit.jupiter.api.Test;
 
@@ -133,7 +134,7 @@ public class QueryTest extends WeaviateTest {
         assertThat(queryOutput.getRow(), is(nullValue()));
         assertThat(queryOutput.getRows(), is(nullValue()));
 
-        var queryOutputContent = readObjectsFromStream(storageInterface.get(null, null, queryOutput.getUri()));
+        var queryOutputContent = readObjectsFromStream(storageInterface.get(TenantService.MAIN_TENANT, null, queryOutput.getUri()));
 
         assertThat(queryOutputContent, containsInAnyOrder(
             Map.of(CLASS_NAME, Map.of("title", "test success")),
