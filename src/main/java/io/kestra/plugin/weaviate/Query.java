@@ -111,7 +111,7 @@ public class Query extends WeaviateConnection implements RunnableTask<FetchOutpu
 	)
 	@NotNull
 	@Builder.Default
-	protected Property<FetchType> fetchType = Property.of(FetchType.STORE);
+	protected Property<FetchType> fetchType = Property.ofValue(FetchType.STORE);
 
     @Override
     public FetchOutput run(RunContext runContext) throws Exception {

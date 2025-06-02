@@ -37,7 +37,7 @@ public class BatchCreateTest extends WeaviateTest {
 
         BatchCreate.builder()
             .url(URL)
-            .className(Property.of(CLASS_NAME))
+            .className(Property.ofValue(CLASS_NAME))
             .objects(objectsToCreate)
             .build()
             .run(runContext);
@@ -51,7 +51,7 @@ public class BatchCreateTest extends WeaviateTest {
                              }
                            }""".formatted(CLASS_NAME);
 
-        FetchOutput output = Query.builder().fetchType(Property.of(FetchType.STORE)).url(URL).query(query).build().run(runContext);
+        FetchOutput output = Query.builder().fetchType(Property.ofValue(FetchType.STORE)).url(URL).query(query).build().run(runContext);
 
         assertThat(output.getSize(), is(1L));
         assertThat(output.getUri(), notNullValue());
@@ -75,7 +75,7 @@ public class BatchCreateTest extends WeaviateTest {
         RunContext runContext = runContextFactory.of(Map.of("uri", uri.toString()));
         VoidOutput batchOutput = BatchCreate.builder()
             .url(URL)
-            .className(Property.of(CLASS_NAME))
+            .className(Property.ofValue(CLASS_NAME))
             .objects("{{uri}}")
             .build()
             .run(runContext);
@@ -89,7 +89,7 @@ public class BatchCreateTest extends WeaviateTest {
                              }
                            }""".formatted(CLASS_NAME);
 
-        FetchOutput output = Query.builder().fetchType(Property.of(FetchType.STORE)).url(URL).query(query).build().run(runContext);
+        FetchOutput output = Query.builder().fetchType(Property.ofValue(FetchType.STORE)).url(URL).query(query).build().run(runContext);
 
         assertThat(output.getSize(), is(2L));
         assertThat(output.getUri(), notNullValue());
