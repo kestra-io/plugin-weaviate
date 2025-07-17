@@ -5,6 +5,7 @@ import io.kestra.core.models.annotations.Plugin;
 import io.kestra.core.models.annotations.PluginProperty;
 import io.kestra.core.models.property.Property;
 import io.kestra.core.models.tasks.RunnableTask;
+import io.kestra.core.models.tasks.Task;
 import io.kestra.core.runners.RunContext;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.weaviate.client.WeaviateClient;
@@ -17,9 +18,12 @@ import io.weaviate.client.v1.filters.WhereFilter;
 import jakarta.validation.constraints.NotBlank;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.Date;
 import java.util.List;
 import java.util.Map;
@@ -54,6 +58,8 @@ import java.util.stream.Collectors;
     }
 )
 public class Delete extends WeaviateConnection implements RunnableTask<Delete.Output> {
+    private static Logger logger = LoggerFactory.getLogger(Delete.class);
+
     @Schema(
         title = "Class name for which you want to delete data"
     )
@@ -65,7 +71,7 @@ public class Delete extends WeaviateConnection implements RunnableTask<Delete.Ou
         title = "Id of the object to delete"
     )
     @PluginProperty(dynamic = true)
-    private String id;
+    private String objectId;
 
     @Schema(
         title = "Attributes to filter by for deletion"
@@ -77,11 +83,11 @@ public class Delete extends WeaviateConnection implements RunnableTask<Delete.Ou
         WeaviateClient client = connect(runContext);
         String renderedClassName = runContext.render(className);
 
-        if (id != null) {
+        if (objectId != null) {
             Result<Boolean> result = client.data()
                 .deleter()
                 .withClassName(renderedClassName)
-                .withID(id)
+                .withID(objectId)
                 .run();
 
             return Output.builder()
@@ -128,11 +134,18 @@ public class Delete extends WeaviateConnection implements RunnableTask<Delete.Ou
 
         BatchDeleteResponse response = result.getResult();
 
+        List<String> ids = Collections.emptyList();
+        if (response.getResults() != null && response.getResults().getObjects() != null) {
+            ids = Arrays.stream(response.getResults().getObjects())
+                .map(BatchDeleteResponse.ResultObject::getId)
+                .toList();
+        }
+
         return Output.builder()
             .className(renderedClassName)
             .success(!result.hasErrors())
             .deletedCount(response.getResults().getSuccessful())
-            .ids(Arrays.stream(response.getResults().getObjects()).map(BatchDeleteResponse.ResultObject::getId).toList())
+            .ids(ids)
             .build();
     }
 

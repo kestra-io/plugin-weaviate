@@ -41,7 +41,7 @@ public class QueryTest extends WeaviateTest {
 
         BatchCreate.builder()
             .url(URL)
-            .className(Property.of(CLASS_NAME))
+            .className(Property.ofValue(CLASS_NAME))
             .objects(parameters)
             .build()
             .run(runContext);
@@ -62,7 +62,7 @@ public class QueryTest extends WeaviateTest {
                        }
                      }
                 """.formatted(CLASS_NAME))
-            .fetchType(Property.of(FetchType.FETCH_ONE))
+            .fetchType(Property.ofValue(FetchType.FETCH_ONE))
             .build()
             .run(runContext);
 
@@ -85,7 +85,7 @@ public class QueryTest extends WeaviateTest {
 
         BatchCreate.builder()
             .url(URL)
-            .className(Property.of(CLASS_NAME))
+            .className(Property.ofValue(CLASS_NAME))
             .objects(objectsToCreate)
             .build()
             .run(runContext);
@@ -93,7 +93,7 @@ public class QueryTest extends WeaviateTest {
         FetchOutput queryOutput = Query.builder()
             .url(URL)
             .query(QUERY.formatted(CLASS_NAME))
-            .fetchType(Property.of(FetchType.FETCH))
+            .fetchType(Property.ofValue(FetchType.FETCH))
             .build()
             .run(runContext);
 
@@ -118,7 +118,7 @@ public class QueryTest extends WeaviateTest {
 
         BatchCreate.builder()
             .url(URL)
-            .className(Property.of(CLASS_NAME))
+            .className(Property.ofValue(CLASS_NAME))
             .objects(objectsToCreate)
             .build()
             .run(runContext);
@@ -126,7 +126,7 @@ public class QueryTest extends WeaviateTest {
         FetchOutput queryOutput = Query.builder()
             .url(URL)
             .query(QUERY.formatted(CLASS_NAME))
-            .fetchType(Property.of(FetchType.STORE))
+            .fetchType(Property.ofValue(FetchType.STORE))
             .build()
             .run(runContext);
 

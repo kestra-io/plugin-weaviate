@@ -28,7 +28,7 @@ public class SchemaCreateTest extends WeaviateTest {
         SchemaCreate.Output schemeOutput = SchemaCreate.builder()
             .url(URL)
             .className(CLASS_NAME)
-            .fields(io.kestra.core.models.property.Property.of(parameters))
+            .fields(io.kestra.core.models.property.Property.ofValue(parameters))
             .build()
             .run(runContext);
 

@@ -26,7 +26,7 @@ public class DeleteTest extends WeaviateTest {
 
         BatchCreate.builder()
             .url(URL)
-            .className(Property.of(CLASS_NAME))
+            .className(Property.ofValue(CLASS_NAME))
             .objects(parameters)
             .build()
             .run(runContext);
@@ -44,7 +44,7 @@ public class DeleteTest extends WeaviateTest {
                           }
                         }
                    """.formatted(CLASS_NAME))
-            .fetchType(Property.of(FetchType.FETCH_ONE))
+            .fetchType(Property.ofValue(FetchType.FETCH_ONE))
             .build()
             .run(runContext);
 
@@ -77,7 +77,7 @@ public class DeleteTest extends WeaviateTest {
                      }
                    }
                 """.formatted(CLASS_NAME))
-            .fetchType(Property.of(FetchType.FETCH))
+            .fetchType(Property.ofValue(FetchType.FETCH))
             .build()
             .run(runContext);
 
@@ -111,7 +111,7 @@ public class DeleteTest extends WeaviateTest {
 
         BatchCreate.builder()
             .url(URL)
-            .className(Property.of(CLASS_NAME))
+            .className(Property.ofValue(CLASS_NAME))
             .objects(createdObjects)
             .build()
             .run(runContext);
@@ -119,7 +119,7 @@ public class DeleteTest extends WeaviateTest {
         Delete.Output deleteOutput = Delete.builder()
             .url(URL)
             .className(CLASS_NAME)
-            .filter(Property.of(Map.of(
+            .filter(Property.ofValue(Map.of(
                 "title", "success",
                 "description", "* description",
                 "length", 10,
@@ -146,7 +146,7 @@ public class DeleteTest extends WeaviateTest {
                      }
                    }
                 """.formatted(CLASS_NAME))
-            .fetchType(Property.of(FetchType.FETCH))
+            .fetchType(Property.ofValue(FetchType.FETCH))
             .build()
             .run(runContext);
 
@@ -155,7 +155,7 @@ public class DeleteTest extends WeaviateTest {
         deleteOutput = Delete.builder()
             .url(URL)
             .className(CLASS_NAME)
-            .filter(Property.of(Map.of(
+            .filter(Property.ofValue(Map.of(
                 "title", "success"
             )))
             .build()
@@ -178,7 +178,7 @@ public class DeleteTest extends WeaviateTest {
                      }
                    }
                 """.formatted(CLASS_NAME))
-            .fetchType(Property.of(FetchType.FETCH))
+            .fetchType(Property.ofValue(FetchType.FETCH))
             .build()
             .run(runContext);
 
@@ -209,7 +209,7 @@ public class DeleteTest extends WeaviateTest {
 
         BatchCreate.builder()
             .url(URL)
-            .className(Property.of(CLASS_NAME))
+            .className(Property.ofValue(CLASS_NAME))
             .objects(createdObjects)
             .build()
             .run(runContext);
@@ -217,7 +217,7 @@ public class DeleteTest extends WeaviateTest {
         Delete.Output deleteOutput = Delete.builder()
             .url(URL)
             .className(CLASS_NAME)
-            .filter(Property.of(Map.of(
+            .filter(Property.ofValue(Map.of(
                 "name", "The Shawshank Redemption"
             )))
             .build()
@@ -241,7 +241,7 @@ public class DeleteTest extends WeaviateTest {
                      }
                    }
                 """.formatted(CLASS_NAME))
-            .fetchType(Property.of(FetchType.FETCH))
+            .fetchType(Property.ofValue(FetchType.FETCH))
             .build()
             .run(runContext);
 
@@ -270,7 +270,7 @@ public class DeleteTest extends WeaviateTest {
                      }
                    }
                 """.formatted(CLASS_NAME))
-            .fetchType(Property.of(FetchType.FETCH))
+            .fetchType(Property.ofValue(FetchType.FETCH))
             .build()
             .run(runContext);
 
