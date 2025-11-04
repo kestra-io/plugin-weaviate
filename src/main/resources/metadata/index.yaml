@@ -1,0 +1,8 @@
+group: io.kestra.plugin.weaviate
+name: "weaviate"
+title: "weaviate"
+description: "This sub-group of plugins contains tasks for using Weaviate database. Weaviate is an vector database. It allows you to store data objects and vector embeddings from your favorite ML-models"
+body: ""
+videos: []
+createdBy: "Kestra Core Team"
+managedBy: "Kestra Core Team"
