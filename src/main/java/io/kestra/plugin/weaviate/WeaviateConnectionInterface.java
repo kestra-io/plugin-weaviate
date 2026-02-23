@@ -9,21 +9,22 @@ import java.util.Map;
 
 public interface WeaviateConnectionInterface {
     @Schema(
-        title = "Connection URL",
-        description = "Example: localhost:8080 or https://cluster-id.weaviate.network"
+        title = "Configure Weaviate endpoint URL",
+        description = "Full http or https host for the Weaviate cluster, including port when not default. Example: localhost:8080 or https://cluster-id.weaviate.network"
     )
     @NotBlank
     @PluginProperty(dynamic = true)
     String getUrl();
 
     @Schema(
-        title = "API key to authenticate with a managed Weaviate cluster",
-        description = "If not provided, the anonymous authentication scheme will be used."
+        title = "Provide managed cluster API key",
+        description = "Optional bearer-style key for hosted Weaviate; if omitted, requests use anonymous access."
     )
     Property<String> getApiKey();
 
     @Schema(
-        title = "Additional headers to add to the request e.g. to authenticate with OpenAI API"
+        title = "Set custom request headers",
+        description = "Key/value headers appended to every call, e.g. extra auth tokens for upstream services."
     )
     Property<Map<String, String>> getHeaders();
 }

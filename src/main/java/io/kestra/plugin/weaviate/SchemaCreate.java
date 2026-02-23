@@ -26,7 +26,8 @@ import java.util.stream.Collectors;
 @EqualsAndHashCode
 @NoArgsConstructor
 @Schema(
-    title = "Create a class schema in a Weaviate database."
+    title = "Create a Weaviate class schema",
+    description = "Creates a new Weaviate class with the provided properties. Fails if the class already exists; data types must match Weaviate schema types."
 )
 @Plugin(
     examples = {
@@ -63,8 +64,8 @@ public class SchemaCreate extends WeaviateConnection implements RunnableTask<Sch
     private String className;
 
     @Schema(
-        title = "Fields to add to the class",
-        description = "Requires specified field name and a list of data types that will be stored in this field"
+        title = "Properties to add to the class",
+        description = "Map of property name to a list of Weaviate data types (e.g. string, int). All listed properties are created on the new class."
     )
     private io.kestra.core.models.property.Property<Map<String, List<String>>> fields;
 
@@ -107,7 +108,7 @@ public class SchemaCreate extends WeaviateConnection implements RunnableTask<Sch
     public static class Output implements io.kestra.core.models.tasks.Output {
 
         @Schema(
-            title = "Indicates whether the schema creation was successful"
+            title = "Whether the schema creation succeeded"
         )
         private Boolean success;
 
