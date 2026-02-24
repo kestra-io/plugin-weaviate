@@ -39,8 +39,8 @@ import static io.kestra.core.utils.Rethrow.throwFunction;
 @EqualsAndHashCode
 @NoArgsConstructor
 @Schema(
-    title = "Batch-insert objects into a Weaviate database.",
-    description = "Data can be either in an ION-serialized file format or as a list of key-value pairs. If the schema doesn't exist yet, it will be created automatically."
+    title = "Batch insert Weaviate objects",
+    description = "Loads multiple objects into a class from a Kestra ION file or an inline list. Each object gets a generated UUID. If the class is missing, Weaviate auto-schema (if enabled) will create it; otherwise the call fails."
 )
 @Plugin(
     examples = {
@@ -94,8 +94,8 @@ public class BatchCreate extends WeaviateConnection implements RunnableTask<Void
     private Property<String> className;
 
     @Schema(
-        title = "Objects to create with their properties",
-        description = "ION File URI or the list of objects to insert",
+        title = "Objects to insert with properties",
+        description = "Either a Kestra storage URI to an ION array or an inline list of maps. Each entry becomes one Weaviate object.",
         anyOf = {
             String.class,
             Map[].class

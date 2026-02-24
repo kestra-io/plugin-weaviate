@@ -35,7 +35,8 @@ import java.util.stream.Collectors;
 @Getter
 @NoArgsConstructor
 @Schema(
-    title = "Delete specific objects in a Weaviate database."
+    title = "Delete objects from a Weaviate class",
+    description = "Deletes a single object by ID or multiple objects with an AND filter. If no filter is provided, all objects in the class are deleted, so use cautiously."
 )
 @Plugin(
     examples = {
@@ -51,8 +52,11 @@ import java.util.stream.Collectors;
                        type: io.kestra.plugin.weaviate.Delete
                        url: https://demo-cluster-id.weaviate.network
                        className: WeaviateObject
-                       filter:
-                         fieldName: field value to be deleted by
+                       # safest: delete a single known object
+                       objectId: "{{ outputs.previous.id }}"
+                       # alternative: delete by AND filter on fields
+                       # filter:
+                       #   status: archived
                    """
         )
     }
@@ -68,13 +72,15 @@ public class Delete extends WeaviateConnection implements RunnableTask<Delete.Ou
     private String className;
 
     @Schema(
-        title = "Id of the object to delete"
+        title = "Object ID to delete",
+        description = "When set, deletes only this object and ignores any filter."
     )
     @PluginProperty(dynamic = true)
     private String objectId;
 
     @Schema(
-        title = "Attributes to filter by for deletion"
+        title = "Filter attributes for deletion",
+        description = "Map of field name to value combined with AND; if omitted, a catch-all filter removes every object in the class."
     )
     private Property<Map<String, Object>> filter;
 
@@ -176,12 +182,12 @@ public class Delete extends WeaviateConnection implements RunnableTask<Delete.Ou
     public static class Output implements io.kestra.core.models.tasks.Output {
 
         @Schema(
-            title = "Class name of the deleted object"
+            title = "Class name where objects were deleted"
         )
         private String className;
 
         @Schema(
-            title = "Whether the delete operation was successful"
+            title = "Whether the delete operation succeeded"
         )
         private Boolean success;
 

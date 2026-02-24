@@ -36,7 +36,8 @@ import java.util.stream.Stream;
 @EqualsAndHashCode
 @NoArgsConstructor
 @Schema(
-    title = "Query Weaviate database with GraphQL."
+    title = "Run GraphQL query against Weaviate",
+    description = "Executes a raw GraphQL query on Weaviate. Defaults to storing all rows to Kestra storage as ION; other fetch modes can return rows inline or skip storage."
 )
 @Plugin(
     examples = {
@@ -52,6 +53,7 @@ import java.util.stream.Stream;
                     type: io.kestra.plugin.weaviate.Query
                     url: https://demo-cluster-id.weaviate.network
                     apiKey: "{{ secret('WEAVIATE_API_KEY') }}"
+                    fetchType: FETCH
                     query: |
                       {
                         Get {
@@ -79,6 +81,7 @@ import java.util.stream.Stream;
                     apiKey: "{{ secret('WEAVIATE_API_KEY') }}"
                     headers:
                       X-OpenAI-Api-Key: "{{ secret('OPENAI_API_KEY') }}"
+                    fetchType: FETCH
                     query: |
                       {
                         Get {
@@ -103,11 +106,8 @@ public class Query extends WeaviateConnection implements RunnableTask<FetchOutpu
     private String query;
 
 	@Schema(
-		title = "How you want to store the output data",
-		description = "FETCH_ONE outputs only the first row\n"
-			+ "FETCH outputs all rows\n"
-			+ "STORE stores all rows in a file\n"
-			+ "NONE doesn't store any data. It's particularly useful when you execute DDL statements or run queries that insert data into another table e.g. using `SELECT ... INSERT INTO` statements."
+		title = "Select fetch behavior",
+		description = "Defaults to STORE (writes all rows to Kestra storage as ION and returns the URI). FETCH returns all rows inline, FETCH_ONE returns the first row, NONE skips result materialization for DDL-type queries."
 	)
 	@NotNull
 	@Builder.Default
