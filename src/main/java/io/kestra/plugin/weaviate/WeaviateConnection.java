@@ -1,17 +1,18 @@
 package io.kestra.plugin.weaviate;
 
+import java.util.Map;
+
 import io.kestra.core.exceptions.IllegalVariableEvaluationException;
 import io.kestra.core.models.property.Property;
 import io.kestra.core.models.tasks.Task;
 import io.kestra.core.runners.RunContext;
+
 import io.weaviate.client.Config;
 import io.weaviate.client.WeaviateAuthClient;
 import io.weaviate.client.WeaviateClient;
 import io.weaviate.client.v1.auth.exception.AuthException;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
-
-import java.util.Map;
 
 @SuperBuilder
 @ToString
@@ -29,7 +30,7 @@ public abstract class WeaviateConnection extends Task implements WeaviateConnect
         String renderedUrl = runContext.render(url);
         int schemeSeparatorIdx = renderedUrl.indexOf("://");
         String scheme = schemeSeparatorIdx == -1 ? "https" : renderedUrl.substring(0, schemeSeparatorIdx);
-        @SuppressWarnings({"unchecked", "rawtypes"})
+        @SuppressWarnings({ "unchecked", "rawtypes" })
         Config config = new Config(
             scheme,
             renderedUrl.substring(schemeSeparatorIdx == -1 ? 0 : schemeSeparatorIdx + 3),

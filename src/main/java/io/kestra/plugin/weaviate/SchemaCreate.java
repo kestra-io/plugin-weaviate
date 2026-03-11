@@ -1,10 +1,16 @@
 package io.kestra.plugin.weaviate;
 
+import java.io.IOException;
+import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
+
 import io.kestra.core.models.annotations.Example;
 import io.kestra.core.models.annotations.Plugin;
 import io.kestra.core.models.annotations.PluginProperty;
 import io.kestra.core.models.tasks.RunnableTask;
 import io.kestra.core.runners.RunContext;
+
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.weaviate.client.WeaviateClient;
 import io.weaviate.client.base.Result;
@@ -14,11 +20,6 @@ import io.weaviate.client.v1.schema.model.WeaviateClass;
 import jakarta.validation.constraints.NotBlank;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
-
-import java.io.IOException;
-import java.util.List;
-import java.util.Map;
-import java.util.stream.Collectors;
 
 @SuperBuilder
 @ToString
@@ -86,7 +87,6 @@ public class SchemaCreate extends WeaviateConnection implements RunnableTask<Sch
             .classCreator()
             .withClass(weaviateClass)
             .run();
-
 
         if (result.hasErrors()) {
             String message = result.getError().getMessages().stream()

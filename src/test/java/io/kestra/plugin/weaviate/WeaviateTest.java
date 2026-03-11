@@ -1,16 +1,18 @@
 package io.kestra.plugin.weaviate;
 
-import io.kestra.core.junit.annotations.KestraTest;
-import io.kestra.core.serializers.FileSerde;
-import io.weaviate.client.Config;
-import io.weaviate.client.WeaviateClient;
-import org.junit.jupiter.api.AfterEach;
-
 import java.io.BufferedReader;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.util.List;
 import java.util.Map;
+
+import org.junit.jupiter.api.AfterEach;
+
+import io.kestra.core.junit.annotations.KestraTest;
+import io.kestra.core.serializers.FileSerde;
+
+import io.weaviate.client.Config;
+import io.weaviate.client.WeaviateClient;
 
 @KestraTest
 public abstract class WeaviateTest {

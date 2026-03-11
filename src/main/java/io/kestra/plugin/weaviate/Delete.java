@@ -1,12 +1,23 @@
 package io.kestra.plugin.weaviate;
 
+import java.io.IOException;
+import java.util.Arrays;
+import java.util.Collections;
+import java.util.Date;
+import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 import io.kestra.core.models.annotations.Example;
 import io.kestra.core.models.annotations.Plugin;
 import io.kestra.core.models.annotations.PluginProperty;
 import io.kestra.core.models.property.Property;
 import io.kestra.core.models.tasks.RunnableTask;
-import io.kestra.core.models.tasks.Task;
 import io.kestra.core.runners.RunContext;
+
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.weaviate.client.WeaviateClient;
 import io.weaviate.client.base.Result;
@@ -18,16 +29,6 @@ import io.weaviate.client.v1.filters.WhereFilter;
 import jakarta.validation.constraints.NotBlank;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import java.io.IOException;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.Date;
-import java.util.List;
-import java.util.Map;
-import java.util.stream.Collectors;
 
 @SuperBuilder
 @ToString
@@ -44,20 +45,20 @@ import java.util.stream.Collectors;
             title = "Send delete request to a Weaviate database. Use object ID or other properties.",
             full = true,
             code = """
-                   id: weaviate_delete_flow
-                   namespace: company.team
+                id: weaviate_delete_flow
+                namespace: company.team
 
-                   tasks:
-                     - id: delete
-                       type: io.kestra.plugin.weaviate.Delete
-                       url: https://demo-cluster-id.weaviate.network
-                       className: WeaviateObject
-                       # safest: delete a single known object
-                       objectId: "{{ outputs.previous.id }}"
-                       # alternative: delete by AND filter on fields
-                       # filter:
-                       #   status: archived
-                   """
+                tasks:
+                  - id: delete
+                    type: io.kestra.plugin.weaviate.Delete
+                    url: https://demo-cluster-id.weaviate.network
+                    className: WeaviateObject
+                    # safest: delete a single known object
+                    objectId: "{{ outputs.previous.id }}"
+                    # alternative: delete by AND filter on fields
+                    # filter:
+                    #   status: archived
+                """
         )
     }
 )
@@ -160,15 +161,15 @@ public class Delete extends WeaviateConnection implements RunnableTask<Delete.Ou
             .path(path)
             .operator(Operator.Like);
 
-        if(value instanceof String typedValue) {
+        if (value instanceof String typedValue) {
             builder.valueText(typedValue);
-        } else if(value instanceof Boolean typedValue) {
+        } else if (value instanceof Boolean typedValue) {
             builder.operator(Operator.Equal).valueBoolean(typedValue);
-        } else if(value instanceof Date typedValue) {
+        } else if (value instanceof Date typedValue) {
             builder.valueDate(typedValue);
-        } else if(value instanceof Integer typedValue) {
+        } else if (value instanceof Integer typedValue) {
             builder.operator(Operator.Equal).valueNumber((double) typedValue);
-        } else if(value instanceof Double typedValue) {
+        } else if (value instanceof Double typedValue) {
             builder.operator(Operator.Equal).valueNumber(typedValue);
         } else {
             builder.valueText(value.toString());

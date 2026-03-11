@@ -1,5 +1,14 @@
 package io.kestra.plugin.weaviate;
 
+import java.io.FileInputStream;
+import java.net.URI;
+import java.net.URL;
+import java.util.List;
+import java.util.Map;
+import java.util.Objects;
+
+import org.junit.jupiter.api.Test;
+
 import io.kestra.core.models.property.Property;
 import io.kestra.core.models.tasks.VoidOutput;
 import io.kestra.core.models.tasks.common.FetchOutput;
@@ -8,15 +17,8 @@ import io.kestra.core.runners.RunContext;
 import io.kestra.core.runners.RunContextFactory;
 import io.kestra.core.storages.StorageInterface;
 import io.kestra.core.tenant.TenantService;
-import jakarta.inject.Inject;
-import org.junit.jupiter.api.Test;
 
-import java.io.FileInputStream;
-import java.net.URI;
-import java.net.URL;
-import java.util.List;
-import java.util.Map;
-import java.util.Objects;
+import jakarta.inject.Inject;
 
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.is;
@@ -43,13 +45,13 @@ public class BatchCreateTest extends WeaviateTest {
             .run(runContext);
 
         String query = """
-                           {
-                             Get {
-                               %s {
-                                   title
-                               }
-                             }
-                           }""".formatted(CLASS_NAME);
+            {
+              Get {
+                %s {
+                    title
+                }
+              }
+            }""".formatted(CLASS_NAME);
 
         FetchOutput output = Query.builder().fetchType(Property.ofValue(FetchType.STORE)).url(URL).query(query).build().run(runContext);
 
@@ -81,13 +83,13 @@ public class BatchCreateTest extends WeaviateTest {
             .run(runContext);
 
         String query = """
-                           {
-                             Get {
-                               %s {
-                                   title
-                               }
-                             }
-                           }""".formatted(CLASS_NAME);
+            {
+              Get {
+                %s {
+                    title
+                }
+              }
+            }""".formatted(CLASS_NAME);
 
         FetchOutput output = Query.builder().fetchType(Property.ofValue(FetchType.STORE)).url(URL).query(query).build().run(runContext);
 

@@ -1,5 +1,14 @@
 package io.kestra.plugin.weaviate;
 
+import java.io.BufferedWriter;
+import java.io.File;
+import java.io.FileWriter;
+import java.io.IOException;
+import java.net.URI;
+import java.util.*;
+import java.util.stream.Collectors;
+import java.util.stream.Stream;
+
 import io.kestra.core.models.annotations.Example;
 import io.kestra.core.models.annotations.Plugin;
 import io.kestra.core.models.annotations.PluginProperty;
@@ -9,6 +18,7 @@ import io.kestra.core.models.tasks.common.FetchOutput;
 import io.kestra.core.models.tasks.common.FetchType;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.serializers.FileSerde;
+
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.weaviate.client.WeaviateClient;
 import io.weaviate.client.base.Result;
@@ -20,15 +30,6 @@ import jakarta.validation.constraints.NotNull;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
 import reactor.core.publisher.Flux;
-
-import java.io.BufferedWriter;
-import java.io.File;
-import java.io.FileWriter;
-import java.io.IOException;
-import java.net.URI;
-import java.util.*;
-import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
 @SuperBuilder
 @ToString
@@ -105,13 +106,13 @@ public class Query extends WeaviateConnection implements RunnableTask<FetchOutpu
     @NotBlank
     private String query;
 
-	@Schema(
-		title = "Select fetch behavior",
-		description = "Defaults to STORE (writes all rows to Kestra storage as ION and returns the URI). FETCH returns all rows inline, FETCH_ONE returns the first row, NONE skips result materialization for DDL-type queries."
-	)
-	@NotNull
-	@Builder.Default
-	protected Property<FetchType> fetchType = Property.ofValue(FetchType.STORE);
+    @Schema(
+        title = "Select fetch behavior",
+        description = "Defaults to STORE (writes all rows to Kestra storage as ION and returns the URI). FETCH returns all rows inline, FETCH_ONE returns the first row, NONE skips result materialization for DDL-type queries."
+    )
+    @NotNull
+    @Builder.Default
+    protected Property<FetchType> fetchType = Property.ofValue(FetchType.STORE);
 
     @Override
     public FetchOutput run(RunContext runContext) throws Exception {
@@ -124,12 +125,16 @@ public class Query extends WeaviateConnection implements RunnableTask<FetchOutpu
 
         if (result.hasErrors() || result.getResult().getErrors() != null) {
             String message = Optional.ofNullable(result.getError())
-                .map(weaviateError -> weaviateError.getMessages().stream()
-                    .map(WeaviateErrorMessage::getMessage)
-                    .collect(Collectors.joining(", ")))
-                .orElse(Arrays.stream(result.getResult().getErrors())
-                    .map(GraphQLError::getMessage)
-                    .collect(Collectors.joining(", ")));
+                .map(
+                    weaviateError -> weaviateError.getMessages().stream()
+                        .map(WeaviateErrorMessage::getMessage)
+                        .collect(Collectors.joining(", "))
+                )
+                .orElse(
+                    Arrays.stream(result.getResult().getErrors())
+                        .map(GraphQLError::getMessage)
+                        .collect(Collectors.joining(", "))
+                );
 
             throw new IOException(message);
         }
@@ -149,7 +154,7 @@ public class Query extends WeaviateConnection implements RunnableTask<FetchOutpu
                 var rows = extractRows(result);
                 outputBuilder = outputBuilder.size((long) rows.size());
 
-                if(FetchType.FETCH.equals(renderedFetchType)) {
+                if (FetchType.FETCH.equals(renderedFetchType)) {
                     yield outputBuilder.rows(rows).build();
                 } else {
                     yield outputBuilder.uri(store(rows, runContext)).build();
@@ -161,8 +166,10 @@ public class Query extends WeaviateConnection implements RunnableTask<FetchOutpu
 
     private URI store(List<Object> data, RunContext runContext) throws IOException {
         File tempFile = runContext.workingDir().createTempFile(".ion").toFile();
-        try (BufferedWriter fileWriter = new BufferedWriter(new FileWriter(tempFile));
-             var output = new BufferedWriter(new FileWriter(tempFile), FileSerde.BUFFER_SIZE)) {
+        try (
+            BufferedWriter fileWriter = new BufferedWriter(new FileWriter(tempFile));
+            var output = new BufferedWriter(new FileWriter(tempFile), FileSerde.BUFFER_SIZE)
+        ) {
 
             var flux = Flux.fromIterable(data);
             FileSerde.writeAll(output, flux).block();
@@ -178,10 +185,12 @@ public class Query extends WeaviateConnection implements RunnableTask<FetchOutpu
     // Method will return {
     private Map<String, List<Map<String, Object>>> extractResultByClassName(Result<GraphQLResponse> result) {
         var castResult = (Map<String, Map<String, List<Map<String, Object>>>>) result.getResult().getData();
-        return castResult.values().stream().reduce(new HashMap<>(), (acc, map) -> {
+        return castResult.values().stream().reduce(new HashMap<>(), (acc, map) ->
+        {
             acc.putAll(map);
             return acc;
-        }, (m1, m2) -> {
+        }, (m1, m2) ->
+        {
             m1.putAll(m2);
             return m1;
         });
@@ -197,8 +206,9 @@ public class Query extends WeaviateConnection implements RunnableTask<FetchOutpu
 
     private List<Object> extractRows(Result<GraphQLResponse> result) {
         return extractResultByClassName(result).entrySet().stream()
-            .flatMap(e -> e.getValue().stream()
-                .map(object -> Map.entry(e.getKey(), object))
+            .flatMap(
+                e -> e.getValue().stream()
+                    .map(object -> Map.entry(e.getKey(), object))
             ).map(Object.class::cast)
             .toList();
     }

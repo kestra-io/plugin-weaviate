@@ -1,5 +1,15 @@
 package io.kestra.plugin.weaviate;
 
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.net.URI;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+import java.util.stream.Collectors;
+
 import io.kestra.core.models.annotations.Example;
 import io.kestra.core.models.annotations.Plugin;
 import io.kestra.core.models.property.Property;
@@ -7,6 +17,7 @@ import io.kestra.core.models.tasks.RunnableTask;
 import io.kestra.core.models.tasks.VoidOutput;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.serializers.FileSerde;
+
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.weaviate.client.WeaviateClient;
 import io.weaviate.client.base.Result;
@@ -20,16 +31,6 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.ToString;
 import lombok.experimental.SuperBuilder;
-
-import java.io.BufferedReader;
-import java.io.IOException;
-import java.io.InputStreamReader;
-import java.net.URI;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
-import java.util.stream.Collectors;
 
 import static io.kestra.core.utils.Rethrow.throwFunction;
 
@@ -112,29 +113,41 @@ public class BatchCreate extends WeaviateConnection implements RunnableTask<Void
 
         if (objects instanceof List) {
             weaviateObjects = ((List<Map<String, Object>>) objects).stream()
-                .map(throwFunction(param -> WeaviateObject.builder()
-                    .id(UUID.randomUUID().toString())
-                    .className(runContext.render(className).as(String.class).orElse(null))
-                    .properties(runContext.render(param))
-                    .build()
-                )).toList();
+                .map(
+                    throwFunction(
+                        param -> WeaviateObject.builder()
+                            .id(UUID.randomUUID().toString())
+                            .className(runContext.render(className).as(String.class).orElse(null))
+                            .properties(runContext.render(param))
+                            .build()
+                    )
+                ).toList();
         } else if (objects instanceof String uri) {
-            try (BufferedReader reader = new BufferedReader(new InputStreamReader(
-                runContext.storage().getFile(URI.create(runContext.render(uri)))
-            ))) {
+            try (
+                BufferedReader reader = new BufferedReader(
+                    new InputStreamReader(
+                        runContext.storage().getFile(URI.create(runContext.render(uri)))
+                    )
+                )
+            ) {
                 weaviateObjects = FileSerde.readAll(reader, Map.class)
-                    .map(throwFunction(map -> WeaviateObject.builder()
-                        .id(UUID.randomUUID().toString())
-                        .className(runContext.render(className).as(String.class).orElse(null))
-                        .properties(map)
-                        .build()
-                    )).collectList().block();
+                    .map(
+                        throwFunction(
+                            map -> WeaviateObject.builder()
+                                .id(UUID.randomUUID().toString())
+                                .className(runContext.render(className).as(String.class).orElse(null))
+                                .properties(map)
+                                .build()
+                        )
+                    ).collectList().block();
             }
         }
 
         Result<ObjectGetResponse[]> result;
-        try (ObjectsBatcher objectsBatcher = client.batch()
-            .objectsBatcher()) {
+        try (
+            ObjectsBatcher objectsBatcher = client.batch()
+                .objectsBatcher()
+        ) {
             result = objectsBatcher
                 .withObjects(weaviateObjects.toArray(WeaviateObject[]::new))
                 .run();

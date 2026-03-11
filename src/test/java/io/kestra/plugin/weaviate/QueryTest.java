@@ -1,5 +1,10 @@
 package io.kestra.plugin.weaviate;
 
+import java.util.List;
+import java.util.Map;
+
+import org.junit.jupiter.api.Test;
+
 import io.kestra.core.models.property.Property;
 import io.kestra.core.models.tasks.common.FetchOutput;
 import io.kestra.core.models.tasks.common.FetchType;
@@ -7,11 +12,8 @@ import io.kestra.core.runners.RunContext;
 import io.kestra.core.runners.RunContextFactory;
 import io.kestra.core.storages.StorageInterface;
 import io.kestra.core.tenant.TenantService;
-import jakarta.inject.Inject;
-import org.junit.jupiter.api.Test;
 
-import java.util.List;
-import java.util.Map;
+import jakarta.inject.Inject;
 
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.*;
@@ -101,10 +103,12 @@ public class QueryTest extends WeaviateTest {
         assertThat(queryOutput.getRow(), is(nullValue()));
         assertThat(queryOutput.getUri(), is(nullValue()));
 
-        assertThat(queryOutput.getRows(), containsInAnyOrder(
-            Map.entry(CLASS_NAME, Map.of("title", "test success")),
-            Map.entry(CLASS_NAME, Map.of("title", "test success 2"))
-        ));
+        assertThat(
+            queryOutput.getRows(), containsInAnyOrder(
+                Map.entry(CLASS_NAME, Map.of("title", "test success")),
+                Map.entry(CLASS_NAME, Map.of("title", "test success 2"))
+            )
+        );
     }
 
     @Test
@@ -136,9 +140,11 @@ public class QueryTest extends WeaviateTest {
 
         var queryOutputContent = readObjectsFromStream(storageInterface.get(TenantService.MAIN_TENANT, null, queryOutput.getUri()));
 
-        assertThat(queryOutputContent, containsInAnyOrder(
-            Map.of(CLASS_NAME, Map.of("title", "test success")),
-            Map.of(CLASS_NAME, Map.of("title", "test success 2"))
-        ));
+        assertThat(
+            queryOutputContent, containsInAnyOrder(
+                Map.of(CLASS_NAME, Map.of("title", "test success")),
+                Map.of(CLASS_NAME, Map.of("title", "test success 2"))
+            )
+        );
     }
 }

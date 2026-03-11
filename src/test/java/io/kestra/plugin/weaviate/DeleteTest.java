@@ -1,15 +1,17 @@
 package io.kestra.plugin.weaviate;
 
+import java.util.List;
+import java.util.Map;
+
+import org.junit.jupiter.api.Test;
+
 import io.kestra.core.models.property.Property;
 import io.kestra.core.models.tasks.common.FetchOutput;
 import io.kestra.core.models.tasks.common.FetchType;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.runners.RunContextFactory;
-import jakarta.inject.Inject;
-import org.junit.jupiter.api.Test;
 
-import java.util.List;
-import java.util.Map;
+import jakarta.inject.Inject;
 
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.is;
@@ -34,16 +36,16 @@ public class DeleteTest extends WeaviateTest {
         FetchOutput queryOutput = Query.builder()
             .url(URL)
             .query("""
-                   {
-                          Get {
-                            %s {
-                              _additional {
-                                id
-                              }
-                            }
-                          }
-                        }
-                   """.formatted(CLASS_NAME))
+                {
+                       Get {
+                         %s {
+                           _additional {
+                             id
+                           }
+                         }
+                       }
+                     }
+                """.formatted(CLASS_NAME))
             .fetchType(Property.ofValue(FetchType.FETCH_ONE))
             .build()
             .run(runContext);
@@ -119,12 +121,16 @@ public class DeleteTest extends WeaviateTest {
         Delete.Output deleteOutput = Delete.builder()
             .url(URL)
             .className(CLASS_NAME)
-            .filter(Property.ofValue(Map.of(
-                "title", "success",
-                "description", "* description",
-                "length", 10,
-                "bool", true
-            )))
+            .filter(
+                Property.ofValue(
+                    Map.of(
+                        "title", "success",
+                        "description", "* description",
+                        "length", 10,
+                        "bool", true
+                    )
+                )
+            )
             .build()
             .run(runContext);
 
@@ -155,9 +161,13 @@ public class DeleteTest extends WeaviateTest {
         deleteOutput = Delete.builder()
             .url(URL)
             .className(CLASS_NAME)
-            .filter(Property.ofValue(Map.of(
-                "title", "success"
-            )))
+            .filter(
+                Property.ofValue(
+                    Map.of(
+                        "title", "success"
+                    )
+                )
+            )
             .build()
             .run(runContext);
 
@@ -197,12 +207,14 @@ public class DeleteTest extends WeaviateTest {
             ),
             Map.of(
                 "name", "The Godfather",
-                "description", "Don Vito Corleone, head of a mafia family, decides to hand over his empire to his youngest son Michael. However, his decision unintentionally puts the lives of his loved ones in grave danger.",
+                "description",
+                "Don Vito Corleone, head of a mafia family, decides to hand over his empire to his youngest son Michael. However, his decision unintentionally puts the lives of his loved ones in grave danger.",
                 "category", "Crime"
             ),
             Map.of(
                 "name", "The Dark Knight",
-                "description", "When the menace known as the Joker wreaks havoc and chaos on the people of Gotham, Batman must accept one of the greatest psychological and physical tests of his ability to fight injustice.",
+                "description",
+                "When the menace known as the Joker wreaks havoc and chaos on the people of Gotham, Batman must accept one of the greatest psychological and physical tests of his ability to fight injustice.",
                 "category", "Action"
             )
         );
@@ -217,9 +229,13 @@ public class DeleteTest extends WeaviateTest {
         Delete.Output deleteOutput = Delete.builder()
             .url(URL)
             .className(CLASS_NAME)
-            .filter(Property.ofValue(Map.of(
-                "name", "The Shawshank Redemption"
-            )))
+            .filter(
+                Property.ofValue(
+                    Map.of(
+                        "name", "The Shawshank Redemption"
+                    )
+                )
+            )
             .build()
             .run(runContext);
 
