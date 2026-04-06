@@ -33,6 +33,7 @@ import lombok.ToString;
 import lombok.experimental.SuperBuilder;
 
 import static io.kestra.core.utils.Rethrow.throwFunction;
+import io.kestra.core.models.annotations.PluginProperty;
 
 @SuperBuilder
 @ToString
@@ -92,6 +93,7 @@ public class BatchCreate extends WeaviateConnection implements RunnableTask<Void
     @Schema(
         title = "Class name where you want to insert data"
     )
+    @PluginProperty(group = "advanced")
     private Property<String> className;
 
     @Schema(
@@ -103,6 +105,7 @@ public class BatchCreate extends WeaviateConnection implements RunnableTask<Void
         }
     )
     @NotNull
+    @PluginProperty(group = "main")
     private Object objects;
 
     @Override

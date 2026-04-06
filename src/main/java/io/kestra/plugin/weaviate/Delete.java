@@ -69,20 +69,21 @@ public class Delete extends WeaviateConnection implements RunnableTask<Delete.Ou
         title = "Class name for which you want to delete data"
     )
     @NotBlank
-    @PluginProperty(dynamic = true)
+    @PluginProperty(dynamic = true, group = "main")
     private String className;
 
     @Schema(
         title = "Object ID to delete",
         description = "When set, deletes only this object and ignores any filter."
     )
-    @PluginProperty(dynamic = true)
+    @PluginProperty(dynamic = true, group = "advanced")
     private String objectId;
 
     @Schema(
         title = "Filter attributes for deletion",
         description = "Map of field name to value combined with AND; if omitted, a catch-all filter removes every object in the class."
     )
+    @PluginProperty(group = "processing")
     private Property<Map<String, Object>> filter;
 
     @Override

@@ -102,7 +102,7 @@ public class Query extends WeaviateConnection implements RunnableTask<FetchOutpu
     @Schema(
         title = "GraphQL query"
     )
-    @PluginProperty(dynamic = true)
+    @PluginProperty(dynamic = true, group = "main")
     @NotBlank
     private String query;
 
@@ -112,6 +112,7 @@ public class Query extends WeaviateConnection implements RunnableTask<FetchOutpu
     )
     @NotNull
     @Builder.Default
+    @PluginProperty(group = "processing")
     protected Property<FetchType> fetchType = Property.ofValue(FetchType.STORE);
 
     @Override
