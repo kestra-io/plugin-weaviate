@@ -60,7 +60,7 @@ public class SchemaCreate extends WeaviateConnection implements RunnableTask<Sch
     @Schema(
         title = "Class name where your data will be stored"
     )
-    @PluginProperty(dynamic = true)
+    @PluginProperty(dynamic = true, group = "main")
     @NotBlank
     private String className;
 

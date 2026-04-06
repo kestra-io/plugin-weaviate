@@ -14,18 +14,20 @@ public interface WeaviateConnectionInterface {
         description = "Full http or https host for the Weaviate cluster, including port when not default. Example: localhost:8080 or https://cluster-id.weaviate.network"
     )
     @NotBlank
-    @PluginProperty(dynamic = true)
+    @PluginProperty(dynamic = true, group = "connection")
     String getUrl();
 
     @Schema(
         title = "Provide managed cluster API key",
         description = "Optional bearer-style key for hosted Weaviate; if omitted, requests use anonymous access."
     )
+    @PluginProperty(group = "connection")
     Property<String> getApiKey();
 
     @Schema(
         title = "Set custom request headers",
         description = "Key/value headers appended to every call, e.g. extra auth tokens for upstream services."
     )
+    @PluginProperty(group = "advanced")
     Property<Map<String, String>> getHeaders();
 }
