@@ -1,5 +1,6 @@
 package io.kestra.plugin.weaviate;
 
+import io.kestra.core.models.annotations.PluginProperty;
 import java.util.Map;
 
 import io.kestra.core.exceptions.IllegalVariableEvaluationException;
@@ -22,6 +23,7 @@ import lombok.experimental.SuperBuilder;
 public abstract class WeaviateConnection extends Task implements WeaviateConnectionInterface {
     private String url;
 
+    @PluginProperty(secret = true)
     private Property<String> apiKey;
 
     private Property<Map<String, String>> headers;

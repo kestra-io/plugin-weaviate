@@ -21,7 +21,7 @@ public interface WeaviateConnectionInterface {
         title = "Provide managed cluster API key",
         description = "Optional bearer-style key for hosted Weaviate; if omitted, requests use anonymous access."
     )
-    @PluginProperty(group = "connection")
+    @PluginProperty(secret = true, group = "connection")
     Property<String> getApiKey();
 
     @Schema(
