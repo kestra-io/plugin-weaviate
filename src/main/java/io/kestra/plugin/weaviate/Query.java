@@ -1,9 +1,9 @@
 package io.kestra.plugin.weaviate;
 
-import java.io.BufferedWriter;
 import java.io.File;
-import java.io.FileWriter;
+import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.OutputStream;
 import java.net.URI;
 import java.util.*;
 import java.util.stream.Collectors;
@@ -167,15 +167,10 @@ public class Query extends WeaviateConnection implements RunnableTask<FetchOutpu
 
     private URI store(List<Object> data, RunContext runContext) throws IOException {
         File tempFile = runContext.workingDir().createTempFile(".ion").toFile();
-        try (
-            BufferedWriter fileWriter = new BufferedWriter(new FileWriter(tempFile));
-            var output = new BufferedWriter(new FileWriter(tempFile), FileSerde.BUFFER_SIZE)
-        ) {
-
+        try (OutputStream output = new FileOutputStream(tempFile)) {
             var flux = Flux.fromIterable(data);
             FileSerde.writeAll(output, flux).block();
-
-            fileWriter.flush();
+            output.flush();
         }
 
         return runContext.storage().putFile(tempFile);
