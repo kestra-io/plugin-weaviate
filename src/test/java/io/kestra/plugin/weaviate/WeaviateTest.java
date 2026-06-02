@@ -1,8 +1,6 @@
 package io.kestra.plugin.weaviate;
 
-import java.io.BufferedReader;
 import java.io.InputStream;
-import java.io.InputStreamReader;
 import java.util.List;
 import java.util.Map;
 
@@ -30,8 +28,8 @@ public abstract class WeaviateTest {
     }
 
     protected List<Map> readObjectsFromStream(InputStream inputStream) throws Exception {
-        try (BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream))) {
-            return FileSerde.readAll(reader, Map.class).collectList().block();
+        try (inputStream) {
+            return FileSerde.readAll(inputStream, Map.class).collectList().block();
         }
     }
 }

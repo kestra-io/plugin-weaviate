@@ -1,8 +1,7 @@
 package io.kestra.plugin.weaviate;
 
-import java.io.BufferedReader;
 import java.io.IOException;
-import java.io.InputStreamReader;
+import java.io.InputStream;
 import java.net.URI;
 import java.util.ArrayList;
 import java.util.List;
@@ -12,6 +11,7 @@ import java.util.stream.Collectors;
 
 import io.kestra.core.models.annotations.Example;
 import io.kestra.core.models.annotations.Plugin;
+import io.kestra.core.models.annotations.PluginProperty;
 import io.kestra.core.models.property.Property;
 import io.kestra.core.models.tasks.RunnableTask;
 import io.kestra.core.models.tasks.VoidOutput;
@@ -33,7 +33,6 @@ import lombok.ToString;
 import lombok.experimental.SuperBuilder;
 
 import static io.kestra.core.utils.Rethrow.throwFunction;
-import io.kestra.core.models.annotations.PluginProperty;
 
 @SuperBuilder
 @ToString
@@ -127,13 +126,9 @@ public class BatchCreate extends WeaviateConnection implements RunnableTask<Void
                 ).toList();
         } else if (objects instanceof String uri) {
             try (
-                BufferedReader reader = new BufferedReader(
-                    new InputStreamReader(
-                        runContext.storage().getFile(URI.create(runContext.render(uri)))
-                    )
-                )
+                InputStream is = runContext.storage().getFile(URI.create(runContext.render(uri)))
             ) {
-                weaviateObjects = FileSerde.readAll(reader, Map.class)
+                weaviateObjects = FileSerde.readAll(is, Map.class)
                     .map(
                         throwFunction(
                             map -> WeaviateObject.builder()
