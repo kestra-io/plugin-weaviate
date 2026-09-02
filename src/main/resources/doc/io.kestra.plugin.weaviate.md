@@ -4,7 +4,7 @@ Query, insert, and manage objects and schemas in Weaviate from Kestra flows.
 
 ## Authentication
 
-Set `url` to your Weaviate cluster URL (e.g. `http://localhost:8080`). For authenticated clusters, set `apiKey`. Pass additional headers (e.g. for upstream service tokens) via `headers`. Store secrets in [secrets](https://kestra.io/docs/concepts/secret) and apply connection properties globally with [plugin defaults](https://kestra.io/docs/workflow-components/plugin-defaults).
+Set `url` to your Weaviate cluster URL (e.g. `http://localhost:8080`). For authenticated clusters, set `apiKey`. Pass additional headers (e.g. for upstream service tokens) via `headers`. Store secrets in [secrets](https://kestra.io/docs/concepts/secret) and set connection properties on each task.
 
 ## Tasks
 
