@@ -152,6 +152,13 @@ tasks.withType(GenerateModuleMetadata).configureEach {
     suppressedValidationErrors.add('enforced-platform')
 }
 
+processResources {
+    inputs.property("version", project.version)
+    filesMatching("io/kestra/plugin/weaviate/plugin.properties") {
+        expand(version: project.version)
+    }
+}
+
 jar {
     manifest {
         attributes(
