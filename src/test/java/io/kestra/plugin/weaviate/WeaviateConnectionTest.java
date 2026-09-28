@@ -30,4 +30,12 @@ class WeaviateConnectionTest {
 
         assertThat(headers, hasEntry(WeaviateConnection.INTEGRATION_HEADER, "custom/1.0"));
     }
+
+    @Test
+    void userCanOverrideIntegrationHeaderCaseInsensitively() {
+        Map<String, String> headers = WeaviateConnection.buildHeaders(Map.of("x-weaviate-client-integration", "custom/1.0"));
+
+        assertThat(headers.size(), is(1));
+        assertThat(headers.get(WeaviateConnection.INTEGRATION_HEADER), is("custom/1.0"));
+    }
 }

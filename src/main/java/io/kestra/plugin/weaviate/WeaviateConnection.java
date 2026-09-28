@@ -2,9 +2,9 @@ package io.kestra.plugin.weaviate;
 
 import java.io.IOException;
 import java.io.InputStream;
-import java.util.HashMap;
 import java.util.Map;
 import java.util.Properties;
+import java.util.TreeMap;
 
 import io.kestra.core.exceptions.IllegalVariableEvaluationException;
 import io.kestra.core.models.property.Property;
@@ -56,7 +56,7 @@ public abstract class WeaviateConnection extends Task implements WeaviateConnect
      * attribute traffic to this plugin, then the user's headers, which take precedence.
      */
     static Map<String, String> buildHeaders(Map<String, String> userHeaders) {
-        Map<String, String> result = new HashMap<>();
+        Map<String, String> result = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
         result.put(INTEGRATION_HEADER, INTEGRATION_VALUE);
         if (userHeaders != null) {
             result.putAll(userHeaders);
@@ -71,7 +71,8 @@ public abstract class WeaviateConnection extends Task implements WeaviateConnect
             }
             Properties properties = new Properties();
             properties.load(is);
-            return properties.getProperty("version", "unknown");
+            String version = properties.getProperty("version");
+            return version == null || version.startsWith("${") ? "unknown" : version;
         } catch (IOException e) {
             return "unknown";
         }
