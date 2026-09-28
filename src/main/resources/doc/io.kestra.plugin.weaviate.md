@@ -48,5 +48,5 @@ Version 2 of this plugin replaces the GraphQL-based `Query` with the structured 
 - Query rows changed from `{ClassName: {...}}` to `{uuid, properties, metadata}`: `row.ClassName.title` becomes `row.properties.title`, and `_additional.id` becomes `uuid`.
 - `BatchCreate` now returns `insertedCount`, `failedCount` and `errors`, and fails on rejected objects by default.
 - `Delete` with neither `objectId` nor filters now requires `deleteAll: true`.
-- `SchemaCreate` takes one data type per field; the legacy `string` type is created as `text`.
+- `SchemaCreate` takes one data type per field; the legacy `string` type is created as `text`. It defaults to `vectorizer: NONE` instead of the server's default vectorizer, so set `vectorizer` if you relied on it.
 - Aggregations, `groupBy`, generative search and `Explore` are not supported. Stay on plugin 1.x, or call the Weaviate REST API with `io.kestra.plugin.core.http.Request`.
