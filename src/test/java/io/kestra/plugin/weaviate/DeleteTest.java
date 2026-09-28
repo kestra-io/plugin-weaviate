@@ -2,362 +2,140 @@ package io.kestra.plugin.weaviate;
 
 import java.util.List;
 import java.util.Map;
+import java.util.stream.IntStream;
 
 import org.junit.jupiter.api.Test;
 
 import io.kestra.core.models.property.Property;
-import io.kestra.core.models.tasks.common.FetchOutput;
-import io.kestra.core.models.tasks.common.FetchType;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.runners.RunContextFactory;
+import io.kestra.plugin.weaviate.FilterCondition.Operator;
 
 import jakarta.inject.Inject;
 
 import static org.hamcrest.MatcherAssert.assertThat;
-import static org.hamcrest.Matchers.is;
+import static org.hamcrest.Matchers.*;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 
 public class DeleteTest extends WeaviateTest {
     @Inject
     private RunContextFactory runContextFactory;
 
-    @Test
-    public void testDeleteById() throws Exception {
+    private RunContext seed() throws Exception {
         RunContext runContext = runContextFactory.of();
-
-        List<Map<String, Object>> parameters = List.of(Map.of("title", "test success"));
-
-        BatchCreate.builder()
-            .url(URL)
-            .className(Property.ofValue(CLASS_NAME))
-            .objects(parameters)
+        batchCreate()
+            .objects(
+                List.of(
+                    Map.of("title", "success", "description", "first description", "length", 10, "bool", true),
+                    Map.of("title", "success", "description", "second description", "length", 100, "bool", true),
+                    Map.of("title", "success", "description", "second description", "length", 1000, "bool", false)
+                )
+            )
             .build()
             .run(runContext);
-
-        FetchOutput queryOutput = Query.builder()
-            .url(URL)
-            .query("""
-                {
-                       Get {
-                         %s {
-                           _additional {
-                             id
-                           }
-                         }
-                       }
-                     }
-                """.formatted(CLASS_NAME))
-            .fetchType(Property.ofValue(FetchType.FETCH_ONE))
-            .build()
-            .run(runContext);
-
-        assertThat(queryOutput.getSize(), is(1L));
-
-        String id = (String) ((Map<String, Object>) queryOutput.getRow().get("_additional")).get("id");
-
-        Delete.Output deleteOutput = Delete.builder()
-            .url(URL)
-            .className(CLASS_NAME)
-            .objectId(Property.ofValue(id))
-            .build()
-            .run(runContext);
-
-        assertThat(true, is(deleteOutput.getSuccess()));
-
-        assertThat(CLASS_NAME, is(deleteOutput.getClassName()));
-        assertThat(deleteOutput.getDeletedCount(), is(1L));
-
-        queryOutput = Query.builder()
-            .url(URL)
-            .query("""
-                   {
-                     Get {
-                         %s {
-                           _additional {
-                             id
-                           }
-                         }
-                     }
-                   }
-                """.formatted(CLASS_NAME))
-            .fetchType(Property.ofValue(FetchType.FETCH))
-            .build()
-            .run(runContext);
-
-        assertThat(queryOutput.getSize(), is(0L));
+        return runContext;
     }
 
     @Test
-    public void testDeleteByExpression() throws Exception {
-        RunContext runContext = runContextFactory.of();
+    public void deletesByRenderedId() throws Exception {
+        RunContext seeded = seed();
+        String id = (String) fetchAll(seeded).getFirst().get("uuid");
+        RunContext runContext = runContextFactory.of(Map.of("id", id));
 
-        var createdObjects = List.of(
-            Map.of(
-                "title", "success",
-                "description", "first description",
-                "length", 10,
-                "bool", true
-            ),
-            Map.of(
-                "title", "success",
-                "description", "second description",
-                "length", 100,
-                "bool", true
-            ),
-            Map.of(
-                "title", "success",
-                "description", "second description",
-                "length", 1000,
-                "bool", false
-            )
-        );
+        Delete.Output output = delete().objectId(Property.ofExpression("{{ id }}")).build().run(runContext);
 
-        BatchCreate.builder()
-            .url(URL)
-            .className(Property.ofValue(CLASS_NAME))
-            .objects(createdObjects)
+        assertThat(output.getSuccess(), is(true));
+        assertThat(output.getClassName(), is(CLASS_NAME));
+        assertThat(output.getDeletedCount(), is(1L));
+        assertThat(output.getIds(), contains(id));
+        assertThat(fetchAll(runContext), hasSize(2));
+    }
+
+    @Test
+    public void deleteByMissingIdReportsFailure() throws Exception {
+        RunContext runContext = seed();
+
+        Delete.Output output = delete().objectId(Property.ofValue("00000000-0000-0000-0000-00000000dead")).build().run(runContext);
+
+        assertThat(output.getSuccess(), is(false));
+        assertThat(output.getDeletedCount(), is(0L));
+    }
+
+    @Test
+    public void deletesBySimpleFilter() throws Exception {
+        RunContext runContext = seed();
+
+        Delete.Output output = delete()
+            .filter(Property.ofValue(Map.of("title", "success", "description", "* description", "length", 10, "bool", true)))
             .build()
             .run(runContext);
 
-        Delete.Output deleteOutput = Delete.builder()
-            .url(URL)
-            .className(CLASS_NAME)
-            .filter(
+        assertThat(output.getSuccess(), is(true));
+        assertThat(output.getDeletedCount(), is(1L));
+        assertThat(output.getIds(), hasSize(1));
+        assertThat(fetchAll(runContext), hasSize(2));
+
+        output = delete().filter(Property.ofValue(Map.of("title", "success"))).build().run(runContext);
+        assertThat(output.getDeletedCount(), is(2L));
+        assertThat(fetchAll(runContext), empty());
+    }
+
+    @Test
+    public void deletesByStructuredFilters() throws Exception {
+        RunContext runContext = seed();
+
+        Delete.Output output = delete()
+            .filters(
                 Property.ofValue(
-                    Map.of(
-                        "title", "success",
-                        "description", "* description",
-                        "length", 10,
-                        "bool", true
+                    List.of(
+                        FilterCondition.builder().property("length").operator(Operator.GREATER_THAN).value(50).build(),
+                        FilterCondition.builder().property("bool").operator(Operator.EQUAL).value(true).build()
                     )
                 )
             )
             .build()
             .run(runContext);
 
-        assertThat(true, is(deleteOutput.getSuccess()));
-
-        assertThat(CLASS_NAME, is(deleteOutput.getClassName()));
-        assertThat(deleteOutput.getDeletedCount(), is(1L));
-
-        FetchOutput queryOutput = Query.builder()
-            .url(URL)
-            .query("""
-                   {
-                     Get {
-                         %s {
-                           _additional {
-                             id
-                           }
-                         }
-                     }
-                   }
-                """.formatted(CLASS_NAME))
-            .fetchType(Property.ofValue(FetchType.FETCH))
-            .build()
-            .run(runContext);
-
-        assertThat(queryOutput.getSize(), is(2L));
-
-        deleteOutput = Delete.builder()
-            .url(URL)
-            .className(CLASS_NAME)
-            .filter(
-                Property.ofValue(
-                    Map.of(
-                        "title", "success"
-                    )
-                )
-            )
-            .build()
-            .run(runContext);
-
-        assertThat(true, is(deleteOutput.getSuccess()));
-
-        assertThat(deleteOutput.getDeletedCount(), is(2L));
-
-        queryOutput = Query.builder()
-            .url(URL)
-            .query("""
-                   {
-                     Get {
-                         %s {
-                           _additional {
-                             id
-                           }
-                         }
-                     }
-                   }
-                """.formatted(CLASS_NAME))
-            .fetchType(Property.ofValue(FetchType.FETCH))
-            .build()
-            .run(runContext);
-
-        assertThat(queryOutput.getSize(), is(0L));
+        assertThat(output.getDeletedCount(), is(1L));
+        assertThat(fetchAll(runContext), hasSize(2));
     }
 
     @Test
-    public void testDeleteAll() throws Exception {
-        RunContext runContext = runContextFactory.of();
+    public void requiresDeleteAllWithoutFilter() throws Exception {
+        RunContext runContext = seed();
 
-        var createdObjects = List.of(
-            Map.of(
-                "name", "The Shawshank Redemption",
-                "description", "Over the course of several years, two convicts form a friendship, seeking consolation and, eventually, redemption through basic compassion.",
-                "category", "Drama"
-            ),
-            Map.of(
-                "name", "The Godfather",
-                "description",
-                "Don Vito Corleone, head of a mafia family, decides to hand over his empire to his youngest son Michael. However, his decision unintentionally puts the lives of his loved ones in grave danger.",
-                "category", "Crime"
-            ),
-            Map.of(
-                "name", "The Dark Knight",
-                "description",
-                "When the menace known as the Joker wreaks havoc and chaos on the people of Gotham, Batman must accept one of the greatest psychological and physical tests of his ability to fight injustice.",
-                "category", "Action"
-            )
-        );
+        var e = assertThrows(IllegalArgumentException.class, () -> delete().build().run(runContext));
+        assertThat(e.getMessage(), containsString("deleteAll: true"));
+        assertThat(fetchAll(runContext), hasSize(3));
 
-        BatchCreate.builder()
-            .url(URL)
-            .className(Property.ofValue(CLASS_NAME))
-            .objects(createdObjects)
-            .build()
-            .run(runContext);
-
-        Delete.Output deleteOutput = Delete.builder()
-            .url(URL)
-            .className(CLASS_NAME)
-            .filter(
-                Property.ofValue(
-                    Map.of(
-                        "name", "The Shawshank Redemption"
-                    )
-                )
-            )
-            .build()
-            .run(runContext);
-
-        assertThat(true, is(deleteOutput.getSuccess()));
-
-        assertThat(CLASS_NAME, is(deleteOutput.getClassName()));
-        assertThat(deleteOutput.getDeletedCount(), is(1L));
-
-        FetchOutput queryOutput = Query.builder()
-            .url(URL)
-            .query("""
-                   {
-                     Get {
-                         %s {
-                           _additional {
-                             id
-                           }
-                         }
-                     }
-                   }
-                """.formatted(CLASS_NAME))
-            .fetchType(Property.ofValue(FetchType.FETCH))
-            .build()
-            .run(runContext);
-
-        assertThat(queryOutput.getSize(), is(2L));
-
-        deleteOutput = Delete.builder()
-            .url(URL)
-            .className(CLASS_NAME)
-            .build()
-            .run(runContext);
-
-        assertThat(true, is(deleteOutput.getSuccess()));
-
-        assertThat(deleteOutput.getDeletedCount(), is(2L));
-
-        queryOutput = Query.builder()
-            .url(URL)
-            .query("""
-                   {
-                     Get {
-                         %s {
-                           _additional {
-                             id
-                           }
-                         }
-                     }
-                   }
-                """.formatted(CLASS_NAME))
-            .fetchType(Property.ofValue(FetchType.FETCH))
-            .build()
-            .run(runContext);
-
-        assertThat(queryOutput.getSize(), is(0L));
+        Delete.Output output = delete().deleteAll(Property.ofValue(true)).build().run(runContext);
+        assertThat(output.getDeletedCount(), is(3L));
+        assertThat(fetchAll(runContext), empty());
     }
 
     @Test
-    public void testDeleteByIdWithExpression() throws Exception {
+    public void rejectsAmbiguousCombinations() {
+        assertThrows(IllegalArgumentException.class, () -> Delete.resolveFilter("id", WeaviateFilters.build(Map.of("a", 1), null, null), false));
+        assertThrows(IllegalArgumentException.class, () -> Delete.resolveFilter("id", null, true));
+        assertThrows(IllegalArgumentException.class, () -> Delete.resolveFilter(null, WeaviateFilters.build(Map.of("a", 1), null, null), true));
+    }
+
+    @Test
+    public void deletesMoreThanQueryMaximumResults() throws Exception {
+        // docker-compose-ci.yml sets QUERY_MAXIMUM_RESULTS=100, so one deleteMany call cannot remove all objects.
         RunContext runContext = runContextFactory.of();
-
-        List<Map<String, Object>> parameters = List.of(Map.of("title", "test success"));
-
-        BatchCreate.builder()
-            .url(URL)
-            .className(Property.ofValue(CLASS_NAME))
-            .objects(parameters)
+        batchCreate()
+            .objects(IntStream.range(0, 250).mapToObj(i -> Map.<String, Object> of("n", i)).toList())
             .build()
             .run(runContext);
 
-        FetchOutput queryOutput = Query.builder()
-            .url(URL)
-            .query("""
-                {
-                       Get {
-                         %s {
-                           _additional {
-                             id
-                           }
-                         }
-                       }
-                     }
-                """.formatted(CLASS_NAME))
-            .fetchType(Property.ofValue(FetchType.FETCH_ONE))
-            .build()
-            .run(runContext);
+        Delete.Output output = delete().deleteAll(Property.ofValue(true)).build().run(runContext);
 
-        assertThat(queryOutput.getSize(), is(1L));
-
-        String id = (String) ((Map<String, Object>) queryOutput.getRow().get("_additional")).get("id");
-
-        // Build a RunContext with `id` available, then reference it via {{ id }}
-        RunContext expressionContext = runContextFactory.of(Map.of("id", id));
-
-        Delete.Output deleteOutput = Delete.builder()
-            .url(URL)
-            .className(CLASS_NAME)
-            .objectId(Property.ofExpression("{{ id }}"))
-            .build()
-            .run(expressionContext);
-
-        assertThat(deleteOutput.getSuccess(), is(true));
-        assertThat(deleteOutput.getClassName(), is(CLASS_NAME));
-        assertThat(deleteOutput.getDeletedCount(), is(1L));
-
-        FetchOutput afterDelete = Query.builder()
-            .url(URL)
-            .query("""
-                {
-                       Get {
-                         %s {
-                           _additional {
-                             id
-                           }
-                         }
-                       }
-                     }
-                """.formatted(CLASS_NAME))
-            .fetchType(Property.ofValue(FetchType.FETCH))
-            .build()
-            .run(expressionContext);
-
-        assertThat(afterDelete.getSize(), is(0L));
+        assertThat(output.getDeletedCount(), is(250L));
+        assertThat(output.getIds(), hasSize(250));
+        assertThat(output.getSuccess(), is(true));
+        try (var client = client()) {
+            assertThat(client.collections.use(CLASS_NAME).size(), is(0L));
+        }
     }
 }

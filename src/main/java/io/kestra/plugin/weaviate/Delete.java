@@ -1,32 +1,23 @@
 package io.kestra.plugin.weaviate;
 
-import java.io.IOException;
-import java.util.Arrays;
-import java.util.Collections;
-import java.util.Date;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.stream.Collectors;
-
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import io.kestra.core.models.annotations.Example;
 import io.kestra.core.models.annotations.Plugin;
 import io.kestra.core.models.annotations.PluginProperty;
+import io.kestra.core.models.executions.metrics.Counter;
 import io.kestra.core.models.property.Property;
 import io.kestra.core.models.tasks.RunnableTask;
 import io.kestra.core.runners.RunContext;
 
 import io.swagger.v3.oas.annotations.media.Schema;
-import io.weaviate.client.WeaviateClient;
-import io.weaviate.client.base.Result;
-import io.weaviate.client.base.WeaviateErrorMessage;
-import io.weaviate.client.v1.batch.model.BatchDeleteOutput;
-import io.weaviate.client.v1.batch.model.BatchDeleteResponse;
-import io.weaviate.client.v1.filters.Operator;
-import io.weaviate.client.v1.filters.WhereFilter;
-import jakarta.validation.constraints.NotBlank;
+import io.weaviate.client6.v1.api.WeaviateClient;
+import io.weaviate.client6.v1.api.collections.CollectionHandle;
+import io.weaviate.client6.v1.api.collections.data.DeleteManyResponse;
+import io.weaviate.client6.v1.api.collections.query.Filter;
+import jakarta.validation.constraints.NotNull;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
 
@@ -36,171 +27,213 @@ import lombok.experimental.SuperBuilder;
 @Getter
 @NoArgsConstructor
 @Schema(
-    title = "Delete objects from a Weaviate class",
-    description = "Deletes a single object by ID or multiple objects with an AND filter. If no filter is provided, all objects in the class are deleted, so use cautiously."
+    title = "Delete objects from a Weaviate collection",
+    description = "Deletes a single object by ID, or every object matching `filter` and/or `filters`. " +
+        "Deleting a whole collection's objects requires `deleteAll: true`, so an empty filter can never wipe a collection by accident."
 )
 @Plugin(
     examples = {
         @Example(
-            title = "Send delete request to a Weaviate database. Use object ID or other properties.",
+            title = "Delete one object by ID.",
             full = true,
             code = """
-                id: weaviate_delete_flow
+                id: weaviate_delete_by_id
                 namespace: company.team
 
                 tasks:
                   - id: delete
                     type: io.kestra.plugin.weaviate.Delete
-                    url: https://demo-cluster-id.weaviate.network
+                    url: https://demo-cluster-id.weaviate.cloud
+                    apiKey: "{{ secret('WEAVIATE_API_KEY') }}"
                     className: WeaviateObject
-                    # safest: delete a single known object
-                    objectId: "{{ outputs.previous.id }}"
-                    # alternative: delete by AND filter on fields
-                    # filter:
-                    #   status: archived
+                    objectId: "{{ outputs.previous.row.uuid }}"
+                """
+        ),
+        @Example(
+            title = "Delete archived objects older than a date.",
+            full = true,
+            code = """
+                id: weaviate_delete_by_filter
+                namespace: company.team
+
+                tasks:
+                  - id: delete
+                    type: io.kestra.plugin.weaviate.Delete
+                    url: https://demo-cluster-id.weaviate.cloud
+                    apiKey: "{{ secret('WEAVIATE_API_KEY') }}"
+                    className: WeaviateObject
+                    filters:
+                      - property: status
+                        operator: EQUAL
+                        value: archived
+                      - property: updatedAt
+                        operator: LESS_THAN
+                        value: "2025-01-01T00:00:00Z"
+                        valueType: DATE
                 """
         )
     }
 )
 public class Delete extends WeaviateConnection implements RunnableTask<Delete.Output> {
-    private static Logger logger = LoggerFactory.getLogger(Delete.class);
+    static final String NIL_UUID = "00000000-0000-0000-0000-000000000000";
+    static final int MAX_RETURNED_IDS = 10_000;
+    private static final int MAX_DELETE_ROUNDS = 10_000;
 
-    @Schema(
-        title = "Class name for which you want to delete data"
-    )
-    @NotBlank
-    @PluginProperty(dynamic = true, group = "main")
-    private String className;
+    @Schema(title = "Collection (class) to delete from")
+    @NotNull
+    @PluginProperty(group = "main")
+    private Property<String> className;
 
     @Schema(
         title = "Object ID to delete",
-        description = "When set, deletes only this object and ignores any filter."
+        description = "When set, deletes only this object; `filter`, `filters` and `deleteAll` must not be set."
     )
-    @PluginProperty(group = "advanced")
+    @PluginProperty(group = "main")
     private Property<String> objectId;
 
     @Schema(
-        title = "Filter attributes for deletion",
-        description = "Map of field name to value combined with AND; if omitted, a catch-all filter removes every object in the class."
+        title = "Simple property filter",
+        description = "Map of property to value, combined with AND. Text values use LIKE (so `*` wildcards work); other values use EQUAL."
     )
     @PluginProperty(group = "processing")
     private Property<Map<String, Object>> filter;
 
+    @Schema(
+        title = "Structured property filters",
+        description = "List of conditions combined with `filtersOperator`. When `filter` is also set, both must match."
+    )
+    @PluginProperty(group = "processing")
+    private Property<List<FilterCondition>> filters;
+
+    @Schema(title = "How to combine `filters`")
+    @Builder.Default
+    @PluginProperty(group = "processing")
+    private Property<FilterCondition.LogicalOperator> filtersOperator = Property.ofValue(FilterCondition.LogicalOperator.AND);
+
+    @Schema(
+        title = "Delete every object in the collection",
+        description = "Required to delete without `objectId` or filters. The collection and its schema are kept."
+    )
+    @Builder.Default
+    @PluginProperty(group = "processing")
+    private Property<Boolean> deleteAll = Property.ofValue(false);
+
+    @Schema(title = "Tenant", description = "Tenant to delete from, for multi-tenant collections.")
+    @PluginProperty(group = "advanced")
+    private Property<String> tenant;
+
     @Override
     public Delete.Output run(RunContext runContext) throws Exception {
-        WeaviateClient client = connect(runContext);
-        String renderedClassName = runContext.render(className);
-        if (objectId != null) {
-            var rObjectId = runContext.render(objectId).as(String.class).orElse(null);
-            Result<Boolean> result = client.data()
-                .deleter()
-                .withClassName(renderedClassName)
-                .withID(rObjectId)
-                .run();
+        String renderedClassName = runContext.render(className).as(String.class).orElseThrow();
+        String renderedObjectId = runContext.render(objectId).as(String.class).filter(s -> !s.isBlank()).orElse(null);
+        boolean renderedDeleteAll = runContext.render(deleteAll).as(Boolean.class).orElse(false);
+        String renderedTenant = runContext.render(tenant).as(String.class).orElse(null);
+        Filter renderedFilter = WeaviateFilters.build(
+            runContext.render(filter).asMap(String.class, Object.class),
+            runContext.render(filters).asList(FilterCondition.class),
+            runContext.render(filtersOperator).as(FilterCondition.LogicalOperator.class).orElse(FilterCondition.LogicalOperator.AND)
+        );
+
+        Filter deleteFilter = resolveFilter(renderedObjectId, renderedFilter, renderedDeleteAll);
+
+        try (WeaviateClient client = connect(runContext)) {
+            CollectionHandle<Map<String, Object>> collection = client.collections.use(renderedClassName);
+            if (renderedTenant != null) {
+                collection = collection.withTenant(renderedTenant);
+            }
+
+            if (renderedObjectId != null) {
+                // The server answers 204 whether or not the object existed, so check first to report an accurate count.
+                boolean deleted = collection.data.exists(renderedObjectId) && collection.data.deleteById(renderedObjectId);
+                runContext.metric(Counter.of("deleted", deleted ? 1 : 0));
+                return Output.builder()
+                    .className(renderedClassName)
+                    .success(deleted)
+                    .deletedCount(deleted ? 1 : 0)
+                    .ids(deleted ? List.of(renderedObjectId) : List.of())
+                    .idsTruncated(false)
+                    .build();
+            }
+
+            // Each call deletes at most QUERY_MAXIMUM_RESULTS objects, so repeat until nothing matches.
+            long deleted = 0;
+            long failed = 0;
+            List<String> ids = new ArrayList<>();
+            boolean truncated = false;
+            for (int round = 0; round < MAX_DELETE_ROUNDS; round++) {
+                DeleteManyResponse response = collection.data.deleteMany(deleteFilter, o -> o.verbose(true));
+                deleted += response.successful();
+                failed += response.failed();
+                if (response.objects() != null) {
+                    for (DeleteManyResponse.DeletedObject object : response.objects()) {
+                        if (object.successful()) {
+                            if (ids.size() < MAX_RETURNED_IDS) {
+                                ids.add(object.uuid());
+                            } else {
+                                truncated = true;
+                            }
+                        }
+                    }
+                }
+                if (response.matches() == 0 || response.successful() == 0) {
+                    break;
+                }
+            }
+
+            runContext.metric(Counter.of("deleted", deleted));
+            runContext.logger().info("Deleted {} objects from '{}' ({} failed)", deleted, renderedClassName, failed);
 
             return Output.builder()
                 .className(renderedClassName)
-                .success(result.getResult())
-                .deletedCount(result.getResult() == Boolean.TRUE ? 1 : 0)
+                .success(failed == 0)
+                .deletedCount(deleted)
+                .ids(ids)
+                .idsTruncated(truncated)
                 .build();
         }
-
-        WhereFilter filter = null;
-        if (this.filter != null) {
-            filter = WhereFilter.builder()
-                .operator(Operator.And)
-                .operands(
-                    runContext.render(this.filter).asMap(String.class, Object.class)
-                        .entrySet()
-                        .stream()
-                        .map(e -> toWhereFilter(e.getKey(), e.getValue()))
-                        .toArray(WhereFilter[]::new)
-                )
-                .build();
-        } else {
-            filter = WhereFilter.builder()
-                .path("_id")
-                .operator(Operator.NotEqual)
-                .valueText("")
-                .build();
-        }
-
-        Result<BatchDeleteResponse> result = client.batch()
-            .objectsBatchDeleter()
-            .withOutput(BatchDeleteOutput.VERBOSE)
-            .withClassName(renderedClassName)
-            .withWhere(filter)
-            .run();
-
-        if (result.hasErrors()) {
-            String message = result.getError().getMessages().stream()
-                .map(WeaviateErrorMessage::getMessage)
-                .collect(Collectors.joining(", "));
-
-            throw new IOException(message);
-        }
-
-        BatchDeleteResponse response = result.getResult();
-
-        List<String> ids = Collections.emptyList();
-        if (response.getResults() != null && response.getResults().getObjects() != null) {
-            ids = Arrays.stream(response.getResults().getObjects())
-                .map(BatchDeleteResponse.ResultObject::getId)
-                .toList();
-        }
-
-        return Output.builder()
-            .className(renderedClassName)
-            .success(!result.hasErrors())
-            .deletedCount(response.getResults().getSuccessful())
-            .ids(ids)
-            .build();
     }
 
-    private WhereFilter toWhereFilter(String path, Object value) {
-        WhereFilter.WhereFilterBuilder builder = WhereFilter.builder()
-            .path(path)
-            .operator(Operator.Like);
-
-        if (value instanceof String typedValue) {
-            builder.valueText(typedValue);
-        } else if (value instanceof Boolean typedValue) {
-            builder.operator(Operator.Equal).valueBoolean(typedValue);
-        } else if (value instanceof Date typedValue) {
-            builder.valueDate(typedValue);
-        } else if (value instanceof Integer typedValue) {
-            builder.operator(Operator.Equal).valueNumber((double) typedValue);
-        } else if (value instanceof Double typedValue) {
-            builder.operator(Operator.Equal).valueNumber(typedValue);
-        } else {
-            builder.valueText(value.toString());
+    /**
+     * Returns the filter to delete by, or null when deleting by ID. Fails on ambiguous or unsafe combinations.
+     */
+    static Filter resolveFilter(String objectId, Filter filter, boolean deleteAll) {
+        if (objectId != null) {
+            if (filter != null || deleteAll) {
+                throw new IllegalArgumentException("`objectId` cannot be combined with `filter`, `filters` or `deleteAll`.");
+            }
+            return null;
         }
-
-        return builder.build();
+        if (filter != null) {
+            if (deleteAll) {
+                throw new IllegalArgumentException("`deleteAll` cannot be combined with `filter` or `filters`.");
+            }
+            return filter;
+        }
+        if (!deleteAll) {
+            throw new IllegalArgumentException(
+                "Set `objectId`, `filter` or `filters` to choose what to delete, or set `deleteAll: true` to delete every object in the collection."
+            );
+        }
+        return Filter.uuid().ne(NIL_UUID);
     }
 
     @Getter
     @Builder
     public static class Output implements io.kestra.core.models.tasks.Output {
 
-        @Schema(
-            title = "Class name where objects were deleted"
-        )
+        @Schema(title = "Collection where objects were deleted")
         private String className;
 
-        @Schema(
-            title = "Whether the delete operation succeeded"
-        )
+        @Schema(title = "Whether every matching object was deleted")
         private Boolean success;
 
-        @Schema(
-            title = "Number of deleted objects"
-        )
+        @Schema(title = "Number of deleted objects")
         private long deletedCount;
 
-        @Schema(
-            title = "IDs of deleted objects"
-        )
+        @Schema(title = "IDs of deleted objects", description = "Capped at " + MAX_RETURNED_IDS + " entries; see `idsTruncated`.")
         private List<String> ids;
+
+        @Schema(title = "Whether `ids` was capped")
+        private boolean idsTruncated;
     }
 }

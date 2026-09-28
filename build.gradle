@@ -38,8 +38,14 @@ tasks.withType(JavaCompile) {
 }
 
 configurations.all {
-    // SEC-0150/SEC-0151: platform BOM pins httpcore5 5.4.1, remove once it ships >= 5.4.3.
-    resolutionStrategy.force "org.apache.httpcomponents.core5:httpcore5:5.4.4", "org.apache.httpcomponents.core5:httpcore5-h2:5.4.4"
+    resolutionStrategy {
+        // SEC-0150/SEC-0151: platform BOM pins httpcore5 5.4.1, remove once it ships >= 5.4.3.
+        force "org.apache.httpcomponents.core5:httpcore5:5.4.4", "org.apache.httpcomponents.core5:httpcore5-h2:5.4.4"
+        // Weaviate client6 ships gRPC stubs generated with protobuf-java 4.x, but the Kestra platform pins 3.25.x.
+        // enforcedPlatform can't be overridden by constraints, so force at the plugin level.
+        force 'com.google.protobuf:protobuf-java:4.33.5'
+        force 'com.google.protobuf:protobuf-java-util:4.33.5'
+    }
 }
 
 dependencies {
@@ -59,7 +65,7 @@ dependencies {
     compileOnly group: "io.kestra", name: "core", version: kestraVersion
 
     // libs included in the final jar
-    api group: 'io.weaviate', name: 'client', version: '5.4.0'
+    implementation group: 'io.weaviate', name: 'client6', version: '6.3.1'
 }
 
 
@@ -95,6 +101,7 @@ dependencies {
 
     // test
     testImplementation "org.junit.jupiter:junit-jupiter-engine"
+    testImplementation "org.junit.jupiter:junit-jupiter-params"
     testImplementation "org.hamcrest:hamcrest"
     testImplementation "org.hamcrest:hamcrest-library"
 }
@@ -179,8 +186,30 @@ jar {
 
 shadowJar {
     archiveClassifier.set(null)
+    // Shadow 9.x defaults duplicatesStrategy to EXCLUDE, which drops duplicate META-INF/services entries
+    // before mergeServiceFiles() sees them and loses grpc providers (e.g. pick_first) at runtime.
+    duplicatesStrategy = DuplicatesStrategy.INCLUDE
     mergeServiceFiles()
 }
+
+// Loads the shaded jar in an isolated classloader, as Kestra does per plugin, and asks grpc for the
+// providers the Weaviate client needs at runtime. Fails the build if the service file merge regresses.
+tasks.register("verifyShadedGrpcProviders") {
+    dependsOn shadowJar
+    doLast {
+        def jarFile = shadowJar.archiveFile.get().asFile
+        def loader = new URLClassLoader([jarFile.toURI().toURL()] as URL[], ClassLoader.getPlatformClassLoader())
+        def lbRegistry = loader.loadClass("io.grpc.LoadBalancerRegistry")
+        if (lbRegistry.getMethod("getProvider", String).invoke(lbRegistry.getMethod("getDefaultRegistry").invoke(null), "pick_first") == null) {
+            throw new GradleException("pick_first LoadBalancerProvider missing from ${jarFile.name}: shadowJar service file merge regressed.")
+        }
+        def channelRegistry = loader.loadClass("io.grpc.ManagedChannelRegistry")
+        if (channelRegistry.getMethod("getDefaultRegistry").invoke(null).invokeMethod("providers", null).isEmpty()) {
+            throw new GradleException("No ManagedChannelProvider in ${jarFile.name}: shadowJar service file merge regressed.")
+        }
+    }
+}
+check.dependsOn verifyShadedGrpcProviders
 
 
 /**********************************************************************************************************************\
