@@ -19,6 +19,7 @@ import jakarta.inject.Inject;
 
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.is;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
 /**
@@ -31,6 +32,8 @@ class VersionGuardTest {
 
     private HttpServer server;
 
+    private volatile String integrationHeader;
+
     @BeforeEach
     void startServer() throws Exception {
         server = HttpServer.create(new InetSocketAddress("localhost", 0), 0);
@@ -41,6 +44,7 @@ class VersionGuardTest {
         });
         server.createContext("/v1/meta", exchange ->
         {
+            integrationHeader = exchange.getRequestHeaders().getFirst(WeaviateConnection.INTEGRATION_HEADER);
             byte[] body = "{\"hostname\":\"http://[::]:8080\",\"version\":\"1.21.3\",\"modules\":{}}".getBytes(StandardCharsets.UTF_8);
             exchange.getResponseHeaders().add("Content-Type", "application/json");
             exchange.sendResponseHeaders(200, body.length);
@@ -68,5 +72,17 @@ class VersionGuardTest {
         assertThat(e.getMessage(), containsString("1.21.3"));
         assertThat(e.getMessage(), containsString("requires Weaviate 1.32 or later"));
         assertThat(e.getMessage(), containsString("plugin-weaviate 1.x"));
+    }
+
+    @Test
+    void sendsIntegrationHeader() {
+        Query task = Query.builder()
+            .url("http://localhost:" + server.getAddress().getPort())
+            .className(Property.ofValue("Anything"))
+            .build();
+
+        assertThrows(IllegalStateException.class, () -> task.run(runContextFactory.of(Map.of())));
+
+        assertThat(integrationHeader, is(WeaviateConnection.INTEGRATION_VALUE));
     }
 }
