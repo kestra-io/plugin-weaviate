@@ -26,7 +26,8 @@ public interface WeaviateConnectionInterface {
 
     @Schema(
         title = "Set custom request headers",
-        description = "Key/value headers appended to every call, e.g. extra auth tokens for upstream services."
+        description = "Key/value headers appended to every call, e.g. extra auth tokens for upstream services. " +
+            "The plugin also sends an `X-Weaviate-Client-Integration` header identifying itself; setting that key here overrides it."
     )
     @PluginProperty(group = "advanced")
     Property<Map<String, String>> getHeaders();
