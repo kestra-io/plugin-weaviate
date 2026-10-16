@@ -291,73 +291,73 @@ public class DeleteTest extends WeaviateTest {
             .run(runContext);
 
         assertThat(queryOutput.getSize(), is(0L));
-        
     }
-@Test
-public void testDeleteByIdWithExpression() throws Exception {
-    RunContext runContext = runContextFactory.of();
 
-    List<Map<String, Object>> parameters = List.of(Map.of("title", "test success"));
+    @Test
+    public void testDeleteByIdWithExpression() throws Exception {
+        RunContext runContext = runContextFactory.of();
 
-    BatchCreate.builder()
-        .url(URL)
-        .className(Property.ofValue(CLASS_NAME))
-        .objects(parameters)
-        .build()
-        .run(runContext);
+        List<Map<String, Object>> parameters = List.of(Map.of("title", "test success"));
 
-    FetchOutput queryOutput = Query.builder()
-        .url(URL)
-        .query("""
-            {
-                   Get {
-                     %s {
-                       _additional {
-                         id
+        BatchCreate.builder()
+            .url(URL)
+            .className(Property.ofValue(CLASS_NAME))
+            .objects(parameters)
+            .build()
+            .run(runContext);
+
+        FetchOutput queryOutput = Query.builder()
+            .url(URL)
+            .query("""
+                {
+                       Get {
+                         %s {
+                           _additional {
+                             id
+                           }
+                         }
                        }
                      }
-                   }
-                 }
-            """.formatted(CLASS_NAME))
-        .fetchType(Property.ofValue(FetchType.FETCH_ONE))
-        .build()
-        .run(runContext);
+                """.formatted(CLASS_NAME))
+            .fetchType(Property.ofValue(FetchType.FETCH_ONE))
+            .build()
+            .run(runContext);
 
-    assertThat(queryOutput.getSize(), is(1L));
+        assertThat(queryOutput.getSize(), is(1L));
 
-    String id = (String) ((Map<String, Object>) queryOutput.getRow().get("_additional")).get("id");
+        String id = (String) ((Map<String, Object>) queryOutput.getRow().get("_additional")).get("id");
 
-    // Build a RunContext with `id` available, then reference it via {{id}}
-    RunContext expressionContext = runContextFactory.of(Map.of("id", id));
+        // Build a RunContext with `id` available, then reference it via {{ id }}
+        RunContext expressionContext = runContextFactory.of(Map.of("id", id));
 
-    Delete.Output deleteOutput = Delete.builder()
-        .url(URL)
-        .className(CLASS_NAME)
-        .objectId(Property.ofValue("{{id}}"))
-        .build()
-        .run(expressionContext);
+        Delete.Output deleteOutput = Delete.builder()
+            .url(URL)
+            .className(CLASS_NAME)
+            .objectId(Property.ofExpression("{{ id }}"))
+            .build()
+            .run(expressionContext);
 
-    assertThat(deleteOutput.getSuccess(), is(true));
-    assertThat(deleteOutput.getClassName(), is(CLASS_NAME));
-    assertThat(deleteOutput.getDeletedCount(), is(1L));
+        assertThat(deleteOutput.getSuccess(), is(true));
+        assertThat(deleteOutput.getClassName(), is(CLASS_NAME));
+        assertThat(deleteOutput.getDeletedCount(), is(1L));
 
-    FetchOutput afterDelete = Query.builder()
-        .url(URL)
-        .query("""
-            {
-                   Get {
-                     %s {
-                       _additional {
-                         id
+        FetchOutput afterDelete = Query.builder()
+            .url(URL)
+            .query("""
+                {
+                       Get {
+                         %s {
+                           _additional {
+                             id
+                           }
+                         }
                        }
                      }
-                   }
-                 }
-            """.formatted(CLASS_NAME))
-        .fetchType(Property.ofValue(FetchType.FETCH))
-        .build()
-        .run(expressionContext);
+                """.formatted(CLASS_NAME))
+            .fetchType(Property.ofValue(FetchType.FETCH))
+            .build()
+            .run(expressionContext);
 
-    assertThat(afterDelete.getSize(), is(0L));
-}
+        assertThat(afterDelete.getSize(), is(0L));
+    }
 }

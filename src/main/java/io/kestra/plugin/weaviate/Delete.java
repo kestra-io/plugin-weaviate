@@ -76,7 +76,7 @@ public class Delete extends WeaviateConnection implements RunnableTask<Delete.Ou
         title = "Object ID to delete",
         description = "When set, deletes only this object and ignores any filter."
     )
-    @PluginProperty(dynamic = true, group = "advanced")
+    @PluginProperty(group = "advanced")
     private Property<String> objectId;
 
     @Schema(
@@ -90,8 +90,6 @@ public class Delete extends WeaviateConnection implements RunnableTask<Delete.Ou
     public Delete.Output run(RunContext runContext) throws Exception {
         WeaviateClient client = connect(runContext);
         String renderedClassName = runContext.render(className);
-    
-
         if (objectId != null) {
             String renderedObjectId = runContext.render(objectId).as(String.class).orElse(null);
             Result<Boolean> result = client.data()
