@@ -91,11 +91,11 @@ public class Delete extends WeaviateConnection implements RunnableTask<Delete.Ou
         WeaviateClient client = connect(runContext);
         String renderedClassName = runContext.render(className);
         if (objectId != null) {
-            String renderedObjectId = runContext.render(objectId).as(String.class).orElse(null);
+            var rObjectId = runContext.render(objectId).as(String.class).orElse(null);
             Result<Boolean> result = client.data()
                 .deleter()
                 .withClassName(renderedClassName)
-                .withID(renderedObjectId)
+                .withID(rObjectId)
                 .run();
 
             return Output.builder()
