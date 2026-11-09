@@ -1,0 +1,45 @@
+# Local Weaviate + Kestra with the plugin built from this repository.
+# Build the plugin first (./gradlew clean shadowJar), then: docker compose -f docker-compose-dev.yml up -d
+name: kestra-weaviate-dev
+
+services:
+  weaviate:
+    image: cr.weaviate.io/semitechnologies/weaviate:1.39.7
+    ports:
+      - 8080:8080   # REST
+      - 50051:50051 # gRPC
+    environment:
+      AUTHENTICATION_ANONYMOUS_ACCESS_ENABLED: 'true'
+      PERSISTENCE_DATA_PATH: /var/lib/weaviate
+      CLUSTER_HOSTNAME: node1
+    volumes:
+      - weaviate-data:/var/lib/weaviate
+
+  kestra:
+    image: kestra/kestra:v1.3.39-no-plugins
+    command: server local
+    user: root # lets Kestra write to the kestra-data volume, as in Kestra's own compose file
+    ports:
+      - 8081:8080 # UI and API, http://localhost:8081
+    volumes:
+      - ./build/libs:/app/plugins # the jar from ./gradlew shadowJar
+      - kestra-data:/app/data # flows, executions and files
+    environment:
+      # Kestra secrets are base64 environment variables prefixed with SECRET_; see the README.
+      SECRET_COHERE_API_KEY: ${SECRET_COHERE_API_KEY:-}
+      KESTRA_CONFIGURATION: |
+        kestra:
+          server:
+            basic-auth:
+              username: admin@kestra.io
+              password: Admin1234
+          storage:
+            type: local
+            local:
+              base-path: /app/data/storage
+    depends_on:
+      - weaviate
+
+volumes:
+  weaviate-data:
+  kestra-data:

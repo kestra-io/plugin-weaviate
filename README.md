@@ -49,6 +49,77 @@
 - Includes `SchemaCreate`, `BatchCreate`, `Query` and `Delete`, built on the Weaviate Java client v6 (REST and gRPC). Requires Weaviate 1.32 or later.
 - See the [plugin documentation](src/main/resources/doc/io.kestra.plugin.weaviate.md) for connection setup, search types, filters, a full example flow, and how to upgrade from the GraphQL-based plugin.
 
+## Run it locally
+
+You need Docker with Compose, and Java 21 or later to build the plugin.
+
+### 1. Build the plugin
+
+```bash
+git clone https://github.com/kestra-io/plugin-weaviate.git
+cd plugin-weaviate
+./gradlew clean shadowJar
+```
+
+This creates `build/libs/plugin-weaviate-<version>.jar`. Kestra loads every jar in that folder, and `clean` makes sure only the new one is there.
+
+### 2. Start Weaviate and Kestra
+
+The example flow vectorizes text with Cohere. Kestra reads secrets from environment variables that start with `SECRET_` and hold a base64 value, so pass your Cohere API key like this:
+
+```bash
+export SECRET_COHERE_API_KEY=$(printf %s "your-cohere-api-key" | base64)
+docker compose -f docker-compose-dev.yml up -d
+```
+
+This starts:
+
+- Weaviate 1.39.7: REST on `localhost:8080`, gRPC on `localhost:50051`.
+- Kestra with the plugin you just built: <http://localhost:8081>. Log in as `admin@kestra.io` with password `Admin1234`. Kestra takes about a minute to start.
+
+Both keep their data in Docker volumes, so it survives restarts. If you skip the Cohere key, flows that don't use a Cohere collection still work.
+
+### 3. Run the example flow
+
+1. Open <http://localhost:8081>, go to **Flows**, and click **Create**.
+2. Paste the [example flow](src/main/resources/doc/io.kestra.plugin.weaviate.md#example-load-and-search-a-collection).
+3. Inside Docker Compose, Kestra reaches Weaviate by its service name. In `pluginDefaults`, change `url` to `http://weaviate:8080` and `grpcHost` to `weaviate`.
+4. Click **Save**, then **Execute**. The logs of the `report` task show the result of each search.
+
+To check the data directly, run `curl "http://localhost:8080/v1/objects?class=Article"`.
+
+You can also do it with the API, after saving the flow (with the change from step 3) as `flow.yml`:
+
+```bash
+curl -u admin@kestra.io:Admin1234 -X POST http://localhost:8081/api/v1/main/flows \
+  -H 'Content-Type: application/x-yaml' --data-binary @flow.yml
+curl -u admin@kestra.io:Admin1234 -X POST \
+  http://localhost:8081/api/v1/main/executions/company.team/weaviate_load_and_search
+```
+
+### 4. Change the code
+
+After changing the plugin, rebuild it and restart Kestra to load the new jar:
+
+```bash
+./gradlew clean shadowJar
+docker compose -f docker-compose-dev.yml restart kestra
+```
+
+The tests run against their own Weaviate on ports 51525 and 51526. That Weaviate has the model2vec module, which the `NEAR_TEXT` tests need. It runs alongside the stack above:
+
+```bash
+./.github/setup-unit.sh   # starts the test Weaviate and waits until it is ready
+./gradlew check           # tests, formatting and docs checks
+```
+
+### 5. Stop everything
+
+```bash
+docker compose -f docker-compose-dev.yml down       # add -v to also delete the data
+docker compose -f docker-compose-ci.yml down
+```
+
 ## Documentation
 * Full documentation can be found under [kestra.io/docs](https://kestra.io/docs)
 * Documentation for developing a plugin is included in the [Plugin Developer Guide](https://kestra.io/docs/plugin-developer-guide/).
