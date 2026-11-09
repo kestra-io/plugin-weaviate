@@ -97,7 +97,7 @@ This flow uses every task, every filter operator, and every index option. It wor
 
   It also uses each `fetchType`: `FETCH`, `FETCH_ONE`, `STORE` and `NONE`.
 - **Deleting:** `Delete` removes one object by `objectId`, then every draft by filter. The `reset` task shows `deleteAll` and is disabled.
-- **Connection:** `pluginDefaults` sets it once for all Weaviate tasks. It also passes the Cohere API key in `headers`, and comments show the Weaviate Cloud variant.
+- **Connection:** `pluginDefaults` sets it once for all Weaviate tasks. It points at `http://weaviate:8080`, the Weaviate of the README's Docker Compose stack, so the flow runs there unchanged. It also passes the Cohere API key in `headers`, and comments show the `localhost` and Weaviate Cloud variants.
 
 Running the flow again is safe. `skipIfExists` reuses the collections, and `uuidKey` replaces objects that have the same `id` instead of duplicating them.
 
@@ -514,8 +514,10 @@ tasks:
 pluginDefaults:
   - type: io.kestra.plugin.weaviate
     values:
-      url: http://localhost:8080
-      grpcHost: localhost
+      # `weaviate` is the Weaviate service of docker-compose-dev.yml (see the README).
+      # If Kestra runs outside Docker, use url http://localhost:8080 and grpcHost localhost instead.
+      url: http://weaviate:8080
+      grpcHost: weaviate
       grpcPort: 50051
       requestTimeout: PT60S # includes the time Weaviate waits for Cohere to vectorize the query
       # For Weaviate Cloud, use your cluster URL and an API key; gRPC is detected automatically.

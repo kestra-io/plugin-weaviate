@@ -84,13 +84,14 @@ Both keep their data in Docker volumes, so it survives restarts. If you skip the
 ### 3. Run the example flow
 
 1. Open <http://localhost:8081>, go to **Flows**, and click **Create**.
-2. Paste the [example flow](src/main/resources/doc/io.kestra.plugin.weaviate.md#example-load-and-search-a-collection).
-3. Inside Docker Compose, Kestra reaches Weaviate by its service name. In `pluginDefaults`, change `url` to `http://weaviate:8080` and `grpcHost` to `weaviate`.
-4. Click **Save**, then **Execute**. The logs of the `report` task show the result of each search.
+2. Paste the [example flow](src/main/resources/doc/io.kestra.plugin.weaviate.md#example-load-and-search-a-collection) as is. It connects to `http://weaviate:8080`, the Weaviate service of this stack.
+3. Click **Save**, then **Execute**. The logs of the `report` task show the result of each search.
+
+In your own flows on this stack, also use `http://weaviate:8080`, not `localhost`. Inside the Kestra container, `localhost:8080` is Kestra itself, and the tasks fail with `HTTP 404: GET /v1/meta`.
 
 To check the data directly, run `curl "http://localhost:8080/v1/objects?class=Article"`.
 
-You can also do it with the API, after saving the flow (with the change from step 3) as `flow.yml`:
+You can also do it with the API, after saving the flow as `flow.yml`:
 
 ```bash
 curl -u admin@kestra.io:Admin1234 -X POST http://localhost:8081/api/v1/main/flows \
