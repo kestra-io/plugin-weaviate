@@ -3,6 +3,9 @@ package io.kestra.plugin.weaviate;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.URI;
+import java.net.http.HttpClient;
+import java.net.http.HttpRequest;
+import java.net.http.HttpResponse;
 import java.time.Duration;
 import java.util.Locale;
 import java.util.Map;
@@ -44,6 +47,34 @@ public abstract class WeaviateConnection extends Task implements WeaviateConnect
     // Headers often carry vectorizer API keys.
     @ToString.Exclude
     private Property<Map<String, String>> headers;
+
+    // Sends a raw JSON body to Weaviate's REST API with the same URL, API key and headers as connect().
+    // Used for documents the client cannot model; switch to client.collections.createFromJson once client6 ships it
+    // (weaviate/java-client#598).
+    protected String restPost(RunContext runContext, String path, String json) throws IllegalVariableEvaluationException, IOException, InterruptedException {
+        var endpoint = Endpoint.parse(
+            runContext.render(url),
+            runContext.render(grpcHost).as(String.class).orElse(null),
+            runContext.render(grpcPort).as(Integer.class).orElse(null)
+        );
+        var request = HttpRequest.newBuilder(URI.create(endpoint.scheme() + "://" + endpoint.httpHost() + ":" + endpoint.httpPort() + path))
+            .POST(HttpRequest.BodyPublishers.ofString(json))
+            .header("Content-Type", "application/json");
+        buildHeaders(runContext.render(headers).asMap(String.class, String.class)).forEach(request::header);
+        var rApiKey = runContext.render(apiKey).as(String.class).orElse(null);
+        if (rApiKey != null) {
+            request.header("Authorization", "Bearer " + rApiKey);
+        }
+        runContext.render(requestTimeout).as(Duration.class).ifPresent(request::timeout);
+
+        try (var http = HttpClient.newHttpClient()) {
+            var response = http.send(request.build(), HttpResponse.BodyHandlers.ofString());
+            if (response.statusCode() >= 300) {
+                throw new IllegalStateException("Weaviate answered HTTP " + response.statusCode() + " to POST " + path + ": " + response.body());
+            }
+            return response.body();
+        }
+    }
 
     // The client holds a gRPC channel, so callers must close it.
     protected WeaviateClient connect(RunContext runContext) throws IllegalVariableEvaluationException {

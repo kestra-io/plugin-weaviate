@@ -29,7 +29,6 @@ import io.weaviate.client6.v1.api.collections.VectorConfig;
 import io.weaviate.client6.v1.api.collections.VectorIndex;
 import io.weaviate.client6.v1.api.collections.tenants.Tenant;
 import io.weaviate.client6.v1.internal.ObjectBuilder;
-import jakarta.validation.constraints.NotNull;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
 
@@ -154,6 +153,42 @@ import lombok.experimental.SuperBuilder;
                       - subject: Cannot log in
                         body: The password reset email never arrives.
                 """
+        ),
+        @Example(
+            title = "Create a collection from its JSON definition, e.g. as exported by https://weaviate.github.io/weaviate-add-collection/.",
+            full = true,
+            code = """
+                id: create_weaviate_from_json
+                namespace: company.team
+
+                tasks:
+                  - id: schema
+                    type: io.kestra.plugin.weaviate.SchemaCreate
+                    url: http://localhost:8080
+                    skipIfExists: true
+                    definition: |
+                      {
+                        "class": "Product",
+                        "properties": [
+                          { "name": "name", "dataType": ["text"] },
+                          {
+                            "name": "dimensions",
+                            "dataType": ["object"],
+                            "nestedProperties": [
+                              { "name": "width", "dataType": ["number"] },
+                              { "name": "unit", "dataType": ["text"] }
+                            ]
+                          }
+                        ],
+                        "vectorConfig": {
+                          "default": {
+                            "vectorizer": { "none": {} },
+                            "vectorIndexType": "hnsw",
+                            "vectorIndexConfig": { "rq": { "enabled": true, "rescoreLimit": 50 } }
+                          }
+                        }
+                      }
+                """
         )
     }
 )
@@ -163,10 +198,24 @@ public class SchemaCreate extends WeaviateConnection implements RunnableTask<Sch
     );
     private static final Set<String> TEXT_ANALYZER_OPTIONS = Set.of("foldAscii", "keepAscii", "stopwordPreset");
 
-    @Schema(title = "Collection (class) name")
-    @NotNull
+    @Schema(
+        title = "Collection (class) name",
+        description = "Required, unless `definition` names the collection in `class`. With `definition`, it overrides that name."
+    )
     @PluginProperty(group = "main")
     private io.kestra.core.models.property.Property<String> className;
+
+    @Schema(
+        title = "Collection definition as Weaviate JSON",
+        description = """
+            The full collection, in the JSON format of Weaviate's REST API (`POST /v1/schema`), as a map or a JSON string.
+            It is sent to Weaviate as is, so every option the server supports is available, including ones this task has
+            no property for. Build one visually with https://weaviate.github.io/weaviate-add-collection/.
+            Use it instead of `fields`, `vectorizer`, `quantization`, `invertedIndex` and the other collection options;
+            `skipIfExists` and `multiTenancy.tenants` still apply."""
+    )
+    @PluginProperty(group = "main")
+    private io.kestra.core.models.property.Property<Map<String, Object>> definition;
 
     @Schema(
         title = "Properties to add to the collection",
@@ -247,6 +296,10 @@ public class SchemaCreate extends WeaviateConnection implements RunnableTask<Sch
 
     @Override
     public SchemaCreate.Output run(RunContext runContext) throws Exception {
+        var rDefinition = runContext.render(definition).asMap(String.class, Object.class);
+        if (!rDefinition.isEmpty()) {
+            return createFromDefinition(runContext, rDefinition);
+        }
         var rClassName = runContext.render(className).as(String.class).orElseThrow(() -> new IllegalArgumentException("`className` is required."));
         var properties = buildProperties(runContext.render(fields).asMap(String.class, Object.class), runContext.logger());
         var rVectorizeProperties = runContext.render(vectorizeProperties).asList(String.class);
@@ -282,6 +335,60 @@ public class SchemaCreate extends WeaviateConnection implements RunnableTask<Sch
             });
             var added = createMissingTenants(client, rClassName, tenantNames);
             return Output.builder().success(true).created(true).tenantsCreated(added).build();
+        }
+    }
+
+    private SchemaCreate.Output createFromDefinition(RunContext runContext, Map<String, Object> rDefinition) throws Exception {
+        var conflicting = new ArrayList<String>();
+        if (fields != null) {
+            conflicting.add("fields");
+        }
+        if (vectorizerModel != null) {
+            conflicting.add("vectorizerModel");
+        }
+        if (vectorizeProperties != null) {
+            conflicting.add("vectorizeProperties");
+        }
+        if (vectorName != null) {
+            conflicting.add("vectorName");
+        }
+        if (quantization != null) {
+            conflicting.add("quantization");
+        }
+        if (invertedIndex != null) {
+            conflicting.add("invertedIndex");
+        }
+        if (runContext.render(vectorizer).as(Vectorizer.class).orElse(Vectorizer.NONE) != Vectorizer.NONE) {
+            conflicting.add("vectorizer");
+        }
+        var rMultiTenancy = runContext.render(multiTenancy).as(MultiTenancyOptions.class).orElse(null);
+        if (rMultiTenancy != null && (rMultiTenancy.getEnabled() != null || rMultiTenancy.getAutoTenantCreation() != null || rMultiTenancy.getAutoTenantActivation() != null)) {
+            conflicting.add("multiTenancy (set multiTenancyConfig in the definition; only multiTenancy.tenants applies)");
+        }
+        if (!conflicting.isEmpty()) {
+            throw new IllegalArgumentException("`definition` describes the whole collection; remove " + String.join(", ", conflicting) + ".");
+        }
+
+        var document = new java.util.LinkedHashMap<>(rDefinition);
+        runContext.render(className).as(String.class).ifPresent(name -> document.put("class", name));
+        if (!(document.get("class") instanceof String rClassName) || rClassName.isBlank()) {
+            throw new IllegalArgumentException("`definition` must name the collection in `class`, or set `className`.");
+        }
+        var tenantNames = tenantNames(rMultiTenancy);
+
+        try (WeaviateClient client = connect(runContext)) {
+            boolean existed = client.collections.exists(rClassName);
+            if (existed && !runContext.render(skipIfExists).as(Boolean.class).orElse(false)) {
+                throw new IllegalStateException("Collection '" + rClassName + "' already exists; set `skipIfExists: true` to reuse it.");
+            }
+            if (!existed) {
+                restPost(runContext, "/v1/schema", io.kestra.core.serializers.JacksonMapper.ofJson().writeValueAsString(document));
+                runContext.logger().info("Created collection '{}' from its JSON definition", rClassName);
+            } else {
+                runContext.logger().info("Collection '{}' already exists, skipping", rClassName);
+            }
+            var added = createMissingTenants(client, rClassName, tenantNames);
+            return Output.builder().success(true).created(!existed).tenantsCreated(added).build();
         }
     }
 

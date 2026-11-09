@@ -30,9 +30,9 @@ Pass extra headers with `headers`, for example vectorizer API keys such as `X-Op
 - `bm25` (`b`, `k1`) and `stopwords` (`preset`, `additions`, `removals`), which tune keyword search;
 - `cleanupIntervalSeconds`.
 
-`quantization` compresses the vectors, and `multiTenancy` isolates data per tenant; both are described below. Set `skipIfExists: true` to make the task idempotent; an existing collection keeps its schema.
+`quantization` compresses the vectors, and `multiTenancy` isolates data per tenant; both are described below. Instead of these options, `definition` can take the whole collection as JSON; see below. Set `skipIfExists: true` to make the task idempotent; an existing collection keeps its schema.
 
-`BatchCreate` inserts objects in batches of `batchSize`. Set `objects` to a `kestra://` URI of an ION file or an inline list of maps. Use `uuidKey` and `vectorKey` to take object IDs and precomputed vectors from the input. The task fails if Weaviate rejects any object, unless `failOnError` is false; rejected objects are then listed in the `errors` output.
+`BatchCreate` inserts objects; `mode` sets how they are sent, as described below. Set `objects` to a `kestra://` URI of an ION file or an inline list of maps. Use `uuidKey` and `vectorKey` to take object IDs and precomputed vectors from the input. The task fails if Weaviate rejects any object, unless `failOnError` is false; rejected objects are then listed in the `errors` output.
 
 `Query` searches a collection. Choose the search with `searchType`:
 
@@ -71,6 +71,54 @@ Special properties:
 - `_id`: the object UUID.
 - `_creationTimeUnix`, `_lastUpdateTimeUnix`: object timestamps. These need `invertedIndex.indexTimestamps`.
 - `len(name)`: the length of a text or array property. This needs `invertedIndex.indexPropertyLength`.
+
+## Batching
+
+`BatchCreate.mode` sets how objects are sent to Weaviate:
+
+| `mode` | How it sends | Settings |
+|---|---|---|
+| `AUTO` (default) | `SERVER_SIDE` on Weaviate 1.36 or later, otherwise `DYNAMIC` | |
+| `SERVER_SIDE` | streams objects; Weaviate sets the pace from its load. Generally available from Weaviate 1.36; fails fast on older servers | `batchSize` (starting size) |
+| `DYNAMIC` | doubles the batch size after requests under 1 s and halves it after requests over 5 s | `batchSize` (starting size) |
+| `FIXED_SIZE` | the same number of objects in every request | `batchSize`, `concurrentRequests` (1 to 32) |
+| `RATE_LIMIT` | at most `objectsPerMinute`, e.g. to stay under a vectorizer provider's rate limit | `objectsPerMinute`, `batchSize` |
+
+The outputs report what was used:
+
+- `mode`: the mode `AUTO` resolved to;
+- `batchSize` and `concurrentRequests`;
+- `requestCount`: the number of insert requests sent (not reported for `SERVER_SIDE`, where Weaviate sets the batches).
+
+When the collection does not exist yet, auto-schema creates it on the first insert. Concurrent requests (`SERVER_SIDE`, or `FIXED_SIZE` with `concurrentRequests` above 1) race to create it, and Weaviate rejects the losers' objects with "class name ... already exists". To avoid this, `BatchCreate` sends the first object on its own before going concurrent.
+
+To learn more, see the Weaviate docs on [batch import](https://docs.weaviate.io/weaviate/manage-objects/import).
+
+## Collections from JSON
+
+`SchemaCreate.definition` takes the whole collection in the JSON format of Weaviate's REST API, as a map or a JSON string. The task sends it to Weaviate unchanged, so every collection option the server supports is available, including nested object properties and settings this plugin has no property for. Build a definition visually with the [Weaviate collection builder](https://weaviate.github.io/weaviate-add-collection/), copy its JSON into the task, and the task creates the collection:
+
+```yaml
+- id: create_products
+  type: io.kestra.plugin.weaviate.SchemaCreate
+  skipIfExists: true
+  definition: |
+    {
+      "class": "Product",
+      "properties": [
+        { "name": "name", "dataType": ["text"] },
+        { "name": "sku", "dataType": ["text"], "tokenization": "field", "indexSearchable": false }
+      ],
+      "vectorConfig": {
+        "default": { "vectorizer": { "none": {} }, "vectorIndexType": "hnsw" }
+      }
+    }
+```
+
+- `className`, if set, replaces `class`, so one definition can serve several collections.
+- `skipIfExists` and `multiTenancy.tenants` still apply.
+- The other collection options (`fields`, `vectorizer`, `quantization`, `invertedIndex`, `multiTenancy` settings) can't be combined with `definition`.
+- If Weaviate rejects the definition, the task fails with the server's message.
 
 ## Vector quantization
 
@@ -111,14 +159,14 @@ This flow uses every task, every filter operator, and every index option. It wor
 
 - **Collections:** `SchemaCreate` creates three collections:
   - `Article`: Weaviate computes its `content` vector from the text with Cohere (`TEXT2VEC_COHERE`, `vectorizerModel`), and compresses it with RQ quantization.
-  - `Snippet`: stores vectors you provide.
+  - `Snippet`: stores vectors you provide. It is created from a JSON `definition`, as exported by the collection builder, with RQ settings that have no task property.
   - `Note`: multi-tenant, one tenant per team. `team-a` is created up front and `team-b` on first insert.
 
   In `Article`:
   - each field states how it is indexed: `indexRangeFilters`, `indexFilterable`, `indexSearchable`, `tokenization` and `textAnalyzer`;
   - `vectorizeProperties` keeps labels out of the vector;
   - `invertedIndex` turns on the indexes that the timestamp, null and length filters need, and tunes BM25 and stopwords.
-- **Loading:** `BatchCreate` loads articles from an ION file and from an inline list, snippets with their own vectors (`vectorKey`, `targetVector`), and notes into each team's `tenant`. One article is rejected on purpose; with `failOnError: false` it is reported in `errors` and the task still succeeds.
+- **Loading:** `BatchCreate` loads articles from an ION file and from an inline list, snippets with their own vectors (`vectorKey`, `targetVector`), and notes into each team's `tenant`. Each load uses a different batching mode: `AUTO`, which resolves to `SERVER_SIDE`, `FIXED_SIZE` with `concurrentRequests`, `RATE_LIMIT` and `DYNAMIC`. The report shows each mode. One article is rejected on purpose; with `failOnError: false` it is reported in `errors` and the task still succeeds.
 - **Searching:** `Query` runs each search type:
   - `BM25` with boosted `queryProperties`;
   - `HYBRID` with `alpha` and a simple `filter`;
@@ -210,15 +258,23 @@ tasks:
         indexRangeFilters: true   # speeds up the date filter in `near_text`
       office: geoCoordinates      # where the author works (`near_berlin`)
 
-  # Collection for vectors you compute yourself.
+  # Collection for vectors you compute yourself, written in Weaviate's own JSON format, as exported by
+  # https://weaviate.github.io/weaviate-add-collection/. Every server option is available this way.
   - id: create_snippets
     type: io.kestra.plugin.weaviate.SchemaCreate
-    className: Snippet
-    vectorizer: NONE
-    vectorName: embedding
     skipIfExists: true
-    fields:
-      text: text
+    definition: |
+      {
+        "class": "Snippet",
+        "properties": [{ "name": "text", "dataType": ["text"] }],
+        "vectorConfig": {
+          "embedding": {
+            "vectorizer": { "none": {} },
+            "vectorIndexType": "hnsw",
+            "vectorIndexConfig": { "rq": { "enabled": true, "rescoreLimit": 50 } }
+          }
+        }
+      }
 
   # One tenant per team: each team's notes live in their own shard and never mix.
   # team-a is created here; team-b is created on first insert (autoTenantCreation).
@@ -243,17 +299,21 @@ tasks:
       {id:"2f1c9a52-6a0e-4c43-9d63-1b6f1d0a0001",title:"Backups that actually restore",body:"Test your restore process regularly and keep copies in another region.",category:"operations",tags:["backup","disaster-recovery"],wordCount:900,rating:4.8,published:true,publishedAt:2024-02-01T00:00:00Z,office:{latitude:52.52,longitude:13.40}}
       {id:"2f1c9a52-6a0e-4c43-9d63-1b6f1d0a0002",title:"Encrypting data at rest",body:"Turn on disk encryption and rotate keys to protect stored data.",category:"security",tags:["encryption","compliance"],wordCount:1200,rating:4.6,published:true,publishedAt:2024-05-15T09:30:00Z,office:{latitude:48.86,longitude:2.35}}
 
+  # The default mode, AUTO, uses server-side batching (Weaviate 1.36+): Weaviate sets the pace from its load.
   - id: load_file
     type: io.kestra.plugin.weaviate.BatchCreate
     className: Article
     objects: "{{ outputs.articles_file.uri }}"
     uuidKey: id
 
+  # FIXED_SIZE: 2 objects per request, 2 requests in parallel.
   - id: load_inline
     type: io.kestra.plugin.weaviate.BatchCreate
     className: Article
     uuidKey: id
+    mode: FIXED_SIZE
     batchSize: 2
+    concurrentRequests: 2
     failOnError: false
     objects:
       - id: 2f1c9a52-6a0e-4c43-9d63-1b6f1d0a0003
@@ -289,9 +349,12 @@ tasks:
         title: Broken object
         wordCount: a lot
 
+  # RATE_LIMIT: at most 120 objects per minute, e.g. to stay under a vectorizer provider's limit.
   - id: load_snippets
     type: io.kestra.plugin.weaviate.BatchCreate
     className: Snippet
+    mode: RATE_LIMIT
+    objectsPerMinute: 120
     uuidKey: id
     vectorKey: vec
     targetVector: embedding
@@ -300,9 +363,11 @@ tasks:
       - {id: 7c0d3e1a-1111-4b6e-9a51-000000000002, text: north-east, vec: [0.7, 0.7, 0.0]}
       - {id: 7c0d3e1a-1111-4b6e-9a51-000000000003, text: up, vec: [0.0, 0.0, 1.0]}
 
+  # DYNAMIC grows or shrinks the batch size with how fast Weaviate answers.
   - id: load_team_a_notes
     type: io.kestra.plugin.weaviate.BatchCreate
     className: Note
+    mode: DYNAMIC
     tenant: team-a
     uuidKey: id
     objects:
@@ -542,6 +607,7 @@ tasks:
     type: io.kestra.plugin.core.log.Log
     message: |
       Loaded {{ outputs.load_file.insertedCount + outputs.load_inline.insertedCount }} articles, rejected {{ outputs.load_inline.failedCount }}: {{ outputs.load_inline.errors[0].message }}
+      Batching: load_file {{ outputs.load_file.mode }}; load_inline {{ outputs.load_inline.mode }}, {{ outputs.load_inline.requestCount }} requests of {{ outputs.load_inline.batchSize }}, {{ outputs.load_inline.concurrentRequests }} in parallel; load_snippets {{ outputs.load_snippets.mode }}; load_team_a_notes {{ outputs.load_team_a_notes.mode }}
       BM25 "data":
       {%- for row in outputs.bm25.rows %}
         {{ row.metadata.score | numberFormat('0.00') }} {{ row.properties.title }}
