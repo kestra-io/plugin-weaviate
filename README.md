@@ -46,7 +46,8 @@
 ## What
 
 - Provides plugin components under `io.kestra.plugin.weaviate`.
-- Includes classes such as `Delete`, `SchemaCreate`, `BatchCreate`, `WeaviateConnection`.
+- Includes `SchemaCreate`, `BatchCreate`, `Query` and `Delete`, built on the Weaviate Java client v6 (REST and gRPC). Requires Weaviate 1.32 or later.
+- See the [plugin documentation](src/main/resources/doc/io.kestra.plugin.weaviate.md) for connection setup, search types, filters, a full example flow, and how to upgrade from the GraphQL-based plugin.
 
 ## Documentation
 * Full documentation can be found under [kestra.io/docs](https://kestra.io/docs)
