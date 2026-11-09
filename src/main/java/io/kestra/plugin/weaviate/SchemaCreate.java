@@ -96,7 +96,7 @@ public class SchemaCreate extends WeaviateConnection implements RunnableTask<Sch
         title = "Vectorizer",
         description = "NONE (default) means vectors are provided on insert, e.g. with `BatchCreate.vectorKey`. " +
             "Other values vectorize text properties server-side; the module must be enabled on the server. " +
-            "Unlike plugin 1.x, the server's DEFAULT_VECTORIZER_MODULE is not used, so set this explicitly."
+            "Unlike plugin versions built on the v5 client, the server's DEFAULT_VECTORIZER_MODULE is not used, so set this explicitly."
     )
     @Builder.Default
     @PluginProperty(group = "processing")

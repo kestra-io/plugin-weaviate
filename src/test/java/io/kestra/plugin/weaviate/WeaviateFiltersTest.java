@@ -178,6 +178,8 @@ class WeaviateFiltersTest {
         assertThat(WeaviateFilters.normalize(5, null), is(5L));
         assertThat(WeaviateFilters.normalize(5.5f, null), is(5.5d));
         assertThat(WeaviateFilters.normalize(List.of(1, 2), null), is(List.of(1L, 2L)));
+        assertThat(WeaviateFilters.normalize(List.of(1, 2.5), null), is(List.of(1.0d, 2.5d)));
+        assertThat(build(condition("a", Operator.CONTAINS_ANY, List.of(1, 2.5))), notNullValue());
         assertThat(WeaviateFilters.normalize("2024-01-01T00:00:00Z", ValueType.DATE), is(OffsetDateTime.parse("2024-01-01T00:00:00Z")));
     }
 }

@@ -27,7 +27,8 @@ Infrastructure dependencies (Docker Compose services in `docker-compose-ci.yml`)
 
 Classpath notes:
 
-- `build.gradle` forces protobuf-java 4.x: client6's gRPC stubs need it, but the Kestra platform pins 3.25.x.
+- `build.gradle` forces protobuf-java 4.x: client6's gRPC stubs need it, but the Kestra platform pins 3.25.x. Keep it at or above the version client6's pom declares (protobuf rejects gencode newer than the runtime).
+- `build.gradle` also forces httpcore5 5.4.4 (SEC-0150/SEC-0151) until the platform BOM ships it.
 - `shadowJar` uses `DuplicatesStrategy.INCLUDE` + `mergeServiceFiles()` so grpc `META-INF/services` providers survive; `verifyShadedGrpcProviders` (part of `check`) guards this.
 
 ### Key Plugin Classes

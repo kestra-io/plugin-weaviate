@@ -40,13 +40,13 @@ Each result row is `{uuid, properties, metadata, vector?, vectors?}`. Request me
 - `filter`: a map of property to value, combined with AND. Text values use `LIKE`, so `*` wildcards work; other values use `EQUAL`.
 - `filters`: a list of `{property, operator, value, valueType}` conditions, combined with `filtersOperator` (`AND` or `OR`). Operators: `EQUAL`, `NOT_EQUAL`, `GREATER_THAN`, `GREATER_THAN_EQUAL`, `LESS_THAN`, `LESS_THAN_EQUAL`, `LIKE`, `CONTAINS_ANY`, `CONTAINS_ALL`, `CONTAINS_NONE`, `IS_NULL`. Set `valueType: DATE` or `UUID` for dates and UUIDs written as strings. Use `_id` to filter by object UUID.
 
-## Upgrading from 1.x
+## Upgrading from the GraphQL-based plugin
 
-Version 2 of this plugin replaces the GraphQL-based `Query` with the structured search above, and requires Weaviate 1.32 or later. The main changes:
+Plugin versions built on the Weaviate Java client v6 replace the GraphQL-based `Query` with the structured search above, and requires Weaviate 1.32 or later. The main changes:
 
 - `Query.query` is now search text, not a GraphQL string. Use `searchType`, `limit`, `returnProperties` and `filters` instead of a `Get { ... }` query.
 - Query rows changed from `{ClassName: {...}}` to `{uuid, properties, metadata}`: `row.ClassName.title` becomes `row.properties.title`, and `_additional.id` becomes `uuid`.
 - `BatchCreate` now returns `insertedCount`, `failedCount` and `errors`, and fails on rejected objects by default.
 - `Delete` with neither `objectId` nor filters now requires `deleteAll: true`.
 - `SchemaCreate` takes one data type per field; the legacy `string` type is created as `text`. It defaults to `vectorizer: NONE` instead of the server's default vectorizer, so set `vectorizer` if you relied on it.
-- Aggregations, `groupBy`, generative search and `Explore` are not supported. Stay on plugin 1.x, or call the Weaviate REST API with `io.kestra.plugin.core.http.Request`.
+- Aggregations, `groupBy`, generative search and `Explore` are not supported. Stay on a plugin version built on the v5 client, or call the Weaviate REST API with `io.kestra.plugin.core.http.Request`.

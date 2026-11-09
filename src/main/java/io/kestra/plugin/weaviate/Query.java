@@ -210,7 +210,11 @@ public class Query extends WeaviateConnection implements RunnableTask<FetchOutpu
     @PluginProperty(group = "processing")
     private Property<List<String>> queryProperties;
 
-    @Schema(title = "Maximum number of objects to return")
+    @Schema(
+        title = "Maximum number of objects to return",
+        description = "Defaults to the server's `QUERY_DEFAULTS_LIMIT`, so FETCH_OBJECTS without `limit` does not return every object. " +
+            "Capped by the server's `QUERY_MAXIMUM_RESULTS`."
+    )
     @PluginProperty(group = "processing")
     private Property<Integer> limit;
 

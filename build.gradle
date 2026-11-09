@@ -43,8 +43,8 @@ configurations.all {
         force "org.apache.httpcomponents.core5:httpcore5:5.4.4", "org.apache.httpcomponents.core5:httpcore5-h2:5.4.4"
         // Weaviate client6 ships gRPC stubs generated with protobuf-java 4.x, but the Kestra platform pins 3.25.x.
         // enforcedPlatform can't be overridden by constraints, so force at the plugin level.
-        force 'com.google.protobuf:protobuf-java:4.33.5'
-        force 'com.google.protobuf:protobuf-java-util:4.33.5'
+        force 'com.google.protobuf:protobuf-java:4.36.2'
+        force 'com.google.protobuf:protobuf-java-util:4.36.2'
     }
 }
 
@@ -65,7 +65,7 @@ dependencies {
     compileOnly group: "io.kestra", name: "core", version: kestraVersion
 
     // libs included in the final jar
-    implementation group: 'io.weaviate', name: 'client6', version: '6.3.1'
+    implementation group: 'io.weaviate', name: 'client6', version: '6.3.2'
 }
 
 

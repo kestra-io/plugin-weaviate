@@ -71,7 +71,7 @@ class VersionGuardTest {
 
         assertThat(e.getMessage(), containsString("1.21.3"));
         assertThat(e.getMessage(), containsString("requires Weaviate 1.32 or later"));
-        assertThat(e.getMessage(), containsString("plugin-weaviate 1.x"));
+        assertThat(e.getMessage(), containsString("built on the v5 client"));
     }
 
     @Test

@@ -92,7 +92,7 @@ public abstract class WeaviateConnection extends Task implements WeaviateConnect
         } catch (WeaviateUnsupportedVersionException e) {
             throw new IllegalStateException(
                 e.getMessage() + " This plugin version uses the Weaviate v6 client, which requires Weaviate 1.32 or later; " +
-                    "use plugin-weaviate 1.x for older servers.",
+                    "use a plugin-weaviate version built on the v5 client for older servers.",
                 e
             );
         }

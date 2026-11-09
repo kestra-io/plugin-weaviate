@@ -247,6 +247,10 @@ final class WeaviateFilters {
                 throw new IllegalArgumentException("list values must not be empty.");
             }
             List<Object> normalized = list.stream().map(v -> normalize(v, type)).toList();
+            // YAML writes [1, 2.5] as Integer and Double; treat such a list as numbers rather than rejecting it.
+            if (normalized.stream().allMatch(v -> v instanceof Long || v instanceof Double) && normalized.stream().anyMatch(v -> v instanceof Double)) {
+                normalized = normalized.stream().<Object> map(v -> ((Number) v).doubleValue()).toList();
+            }
             Class<?> first = normalized.getFirst().getClass();
             if (normalized.stream().anyMatch(v -> v.getClass() != first)) {
                 throw new IllegalArgumentException("list values must all have the same type, got " + describe(value) + ".");
