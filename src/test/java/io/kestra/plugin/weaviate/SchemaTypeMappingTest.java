@@ -1,0 +1,77 @@
+package io.kestra.plugin.weaviate;
+
+import java.util.List;
+import java.util.Map;
+
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
+
+import io.weaviate.client6.v1.api.collections.Property;
+import io.weaviate.client6.v1.api.collections.vectorizers.SelfProvidedVectorizer;
+import io.weaviate.client6.v1.api.collections.vectorizers.Text2VecModel2VecVectorizer;
+
+import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.*;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+
+class SchemaTypeMappingTest {
+    @ParameterizedTest
+    @CsvSource(
+        {
+            "text, text",
+            "string, text",
+            "String, text",
+            "string[], text[]",
+            "text[], text[]",
+            "int, int",
+            "int[], int[]",
+            "number, number",
+            "number[], number[]",
+            "boolean, boolean",
+            "boolean[], boolean[]",
+            "date, date",
+            "date[], date[]",
+            "uuid, uuid",
+            "uuid[], uuid[]",
+            "blob, blob",
+            "geoCoordinates, geoCoordinates",
+            "phoneNumber, phoneNumber"
+        }
+    )
+    void mapsDataTypes(String input, String expected) {
+        Property property = SchemaCreate.buildProperty("p", input, null);
+
+        assertThat(property.propertyName(), is("p"));
+        assertThat(property.dataTypes(), is(List.of(expected)));
+    }
+
+    @Test
+    void acceptsStringOrSingleElementList() {
+        List<Property> properties = SchemaCreate.buildProperties(Map.of("a", "text", "b", List.of("int")), null);
+
+        assertThat(properties.stream().map(p -> p.dataTypes().getFirst()).toList(), containsInAnyOrder("text", "int"));
+    }
+
+    @Test
+    void rejectsUnsupportedTypes() {
+        assertThrows(IllegalArgumentException.class, () -> SchemaCreate.buildProperty("p", "object", null));
+        assertThrows(IllegalArgumentException.class, () -> SchemaCreate.buildProperty("p", "Article", null));
+        assertThrows(IllegalArgumentException.class, () -> SchemaCreate.buildProperties(Map.of("p", List.of("text", "int")), null));
+        assertThrows(IllegalArgumentException.class, () -> SchemaCreate.buildProperties(Map.of("p", 5), null));
+    }
+
+    @Test
+    void buildsVectorConfig() {
+        var none = SchemaCreate.buildVectorConfig(SchemaCreate.Vectorizer.NONE, null, null);
+        assertThat(none.getKey(), is("default"));
+        assertThat(none.getValue(), instanceOf(SelfProvidedVectorizer.class));
+
+        var named = SchemaCreate.buildVectorConfig(SchemaCreate.Vectorizer.TEXT2VEC_MODEL2VEC, null, "body");
+        assertThat(named.getKey(), is("body"));
+        assertThat(named.getValue(), instanceOf(Text2VecModel2VecVectorizer.class));
+
+        assertThat(SchemaCreate.buildVectorConfig(SchemaCreate.Vectorizer.TEXT2VEC_OPENAI, "text-embedding-3-small", null).getKey(), is("default"));
+        assertThrows(IllegalArgumentException.class, () -> SchemaCreate.buildVectorConfig(SchemaCreate.Vectorizer.TEXT2VEC_MODEL2VEC, "m", null));
+    }
+}

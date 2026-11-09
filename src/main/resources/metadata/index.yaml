@@ -2,7 +2,7 @@ group: io.kestra.plugin.weaviate
 name: "weaviate"
 title: "Weaviate"
 description: "Tasks that manage and query vectors in Weaviate."
-body: "Provide Weaviate endpoint and API key to create schemas, import vectors with properties, run similarity or hybrid searches, and delete objects, enabling vector search inside workflows."
+body: "Provide Weaviate endpoint and API key to create collections, batch import objects with vectors, run BM25, hybrid, near-text and near-vector searches with filters, and delete objects, enabling vector search inside workflows. Requires Weaviate 1.32 or later."
 videos: []
 createdBy: "Kestra Core Team"
 managedBy: "Kestra Core Team"
