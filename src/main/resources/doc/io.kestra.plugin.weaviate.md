@@ -44,7 +44,7 @@ Each result row is `{uuid, properties, metadata, vector?, vectors?}`. Request me
 
 This flow uses every task and nearly every option. It works with a knowledge base of articles:
 
-- **Collections:** `SchemaCreate` creates `Article`, whose `content` vector Weaviate computes from the text, and `Snippet`, which stores vectors you provide.
+- **Collections:** `SchemaCreate` creates `Article`, whose `content` vector Weaviate computes from the text with Cohere (`TEXT2VEC_COHERE`, `vectorizerModel`), and `Snippet`, which stores vectors you provide.
 - **Loading:** `BatchCreate` loads articles from an ION file and from an inline list, and snippets with their own vectors (`vectorKey`, `targetVector`). One article is rejected on purpose; with `failOnError: false` it is reported in `errors` and the task still succeeds.
 - **Searching:** `Query` runs each search type:
   - `BM25` with boosted `queryProperties`;
@@ -54,11 +54,11 @@ This flow uses every task and nearly every option. It works with a knowledge bas
 
   It also uses each `fetchType`: `FETCH`, `FETCH_ONE`, `STORE` and `NONE`.
 - **Deleting:** `Delete` removes one object by `objectId`, then every draft by filter. The `reset` task shows `deleteAll` and is disabled.
-- **Connection:** `pluginDefaults` sets it once for all Weaviate tasks. Comments show the Weaviate Cloud and `headers` variants.
+- **Connection:** `pluginDefaults` sets it once for all Weaviate tasks. It also passes the Cohere API key in `headers`, and comments show the Weaviate Cloud variant.
 
 Running the flow again is safe. `skipIfExists` reuses the collections, and `uuidKey` replaces objects that have the same `id` instead of duplicating them.
 
-`TEXT2VEC_MODEL2VEC` needs the `text2vec-model2vec` module on a self-hosted server. On Weaviate Cloud, use `TEXT2VEC_WEAVIATE`. `tenant` is not shown, because it needs a multi-tenant collection, which `SchemaCreate` does not create.
+Store your Cohere API key as the `COHERE_API_KEY` secret. Weaviate calls Cohere with it whenever it vectorizes objects or `NEAR_TEXT`/`HYBRID` queries. The `text2vec-cohere` module is enabled by default on recent Weaviate servers and on Weaviate Cloud. `tenant` is not shown, because it needs a multi-tenant collection, which `SchemaCreate` does not create.
 
 ```yaml
 id: weaviate_load_and_search
@@ -70,11 +70,12 @@ inputs:
     defaults: how do I keep my data safe
 
 tasks:
-  # Collection whose `content` vector is computed by Weaviate from the text properties.
+  # Collection whose `content` vector Weaviate computes from the text properties with Cohere.
   - id: create_articles
     type: io.kestra.plugin.weaviate.SchemaCreate
     className: Article
-    vectorizer: TEXT2VEC_MODEL2VEC
+    vectorizer: TEXT2VEC_COHERE
+    vectorizerModel: embed-v4.0
     vectorName: content
     skipIfExists: true
     fields:
@@ -337,9 +338,9 @@ pluginDefaults:
       # For Weaviate Cloud, use your cluster URL and an API key; gRPC is detected automatically.
       # url: https://my-cluster.weaviate.cloud
       # apiKey: "{{ secret('WEAVIATE_API_KEY') }}"
-      # Headers are sent with every request, e.g. API keys for vectorizer providers:
-      # headers:
-      #   X-OpenAI-Api-Key: "{{ secret('OPENAI_API_KEY') }}"
+      # Weaviate calls Cohere with this key when it vectorizes objects and NEAR_TEXT/HYBRID queries.
+      headers:
+        X-Cohere-Api-Key: "{{ secret('COHERE_API_KEY') }}"
 ```
 
 The `report` task logs the result of each search. With the default question, the top hybrid match is "Encrypting data at rest". The `similar` search returns the two articles closest to "Scaling reads with replicas", excluding that article itself. Each row in `rows` is `{uuid, properties, metadata, vector?, vectors?}`. With `fetchType: STORE`, rows go to an ION file at `outputs.<task>.uri`, which suits large result sets.

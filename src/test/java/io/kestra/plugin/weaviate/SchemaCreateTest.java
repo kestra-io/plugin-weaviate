@@ -12,6 +12,7 @@ import io.kestra.core.runners.RunContextFactory;
 import io.weaviate.client6.v1.api.WeaviateApiException;
 import io.weaviate.client6.v1.api.collections.CollectionConfig;
 import io.weaviate.client6.v1.api.collections.vectorizers.SelfProvidedVectorizer;
+import io.weaviate.client6.v1.api.collections.vectorizers.Text2VecCohereVectorizer;
 import io.weaviate.client6.v1.api.collections.vectorizers.Text2VecModel2VecVectorizer;
 import jakarta.inject.Inject;
 
@@ -63,6 +64,22 @@ public class SchemaCreateTest extends WeaviateTest {
             .run(runContext);
 
         assertThat(config().vectors().get("title_vec"), instanceOf(Text2VecModel2VecVectorizer.class));
+    }
+
+    @Test
+    public void createsCohereVectorizedCollection() throws Exception {
+        RunContext runContext = runContextFactory.of();
+
+        schemaCreate()
+            .fields(Property.ofValue(Map.of("title", "text")))
+            .vectorizer(Property.ofValue(SchemaCreate.Vectorizer.TEXT2VEC_COHERE))
+            .vectorizerModel(Property.ofValue("embed-v4.0"))
+            .build()
+            .run(runContext);
+
+        var vectorizer = config().vectors().get("default");
+        assertThat(vectorizer, instanceOf(Text2VecCohereVectorizer.class));
+        assertThat(((Text2VecCohereVectorizer) vectorizer).model(), is("embed-v4.0"));
     }
 
     @Test

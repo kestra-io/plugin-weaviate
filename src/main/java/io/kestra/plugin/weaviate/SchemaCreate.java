@@ -105,7 +105,7 @@ public class SchemaCreate extends WeaviateConnection implements RunnableTask<Sch
     @PluginProperty(group = "processing")
     private io.kestra.core.models.property.Property<Vectorizer> vectorizer = io.kestra.core.models.property.Property.ofValue(Vectorizer.NONE);
 
-    @Schema(title = "Vectorizer model", description = "Model name for TEXT2VEC_OPENAI and TEXT2VEC_WEAVIATE. Defaults to the module default.")
+    @Schema(title = "Vectorizer model", description = "Model name for TEXT2VEC_COHERE, TEXT2VEC_OPENAI and TEXT2VEC_WEAVIATE. Defaults to the module default.")
     @PluginProperty(group = "processing")
     private io.kestra.core.models.property.Property<String> vectorizerModel;
 
@@ -194,13 +194,16 @@ public class SchemaCreate extends WeaviateConnection implements RunnableTask<Sch
     }
 
     static Map.Entry<String, VectorConfig> buildVectorConfig(Vectorizer vectorizer, String model, String name) {
-        if (model != null && vectorizer != Vectorizer.TEXT2VEC_OPENAI && vectorizer != Vectorizer.TEXT2VEC_WEAVIATE) {
-            throw new IllegalArgumentException("`vectorizerModel` is only supported with TEXT2VEC_OPENAI and TEXT2VEC_WEAVIATE, not " + vectorizer + ".");
+        if (model != null && vectorizer != Vectorizer.TEXT2VEC_COHERE && vectorizer != Vectorizer.TEXT2VEC_OPENAI && vectorizer != Vectorizer.TEXT2VEC_WEAVIATE) {
+            throw new IllegalArgumentException("`vectorizerModel` is only supported with TEXT2VEC_COHERE, TEXT2VEC_OPENAI and TEXT2VEC_WEAVIATE, not " + vectorizer + ".");
         }
         return switch (vectorizer) {
             case NONE -> name != null ? VectorConfig.selfProvided(name) : VectorConfig.selfProvided();
             case TEXT2VEC_MODEL2VEC -> name != null ? VectorConfig.text2vecModel2Vec(name) : VectorConfig.text2vecModel2Vec();
             case TEXT2VEC_TRANSFORMERS -> name != null ? VectorConfig.text2vecTransformers(name) : VectorConfig.text2vecTransformers();
+            case TEXT2VEC_COHERE -> model == null
+                ? (name != null ? VectorConfig.text2vecCohere(name) : VectorConfig.text2vecCohere())
+                : VectorConfig.text2vecCohere(name != null ? name : VectorIndex.DEFAULT_VECTOR_NAME, v -> v.model(model));
             case TEXT2VEC_OPENAI -> model == null
                 ? (name != null ? VectorConfig.text2vecOpenAi(name) : VectorConfig.text2vecOpenAi())
                 : VectorConfig.text2vecOpenAi(name != null ? name : VectorIndex.DEFAULT_VECTOR_NAME, v -> v.model(model));
@@ -212,6 +215,7 @@ public class SchemaCreate extends WeaviateConnection implements RunnableTask<Sch
 
     public enum Vectorizer {
         NONE,
+        TEXT2VEC_COHERE,
         TEXT2VEC_MODEL2VEC,
         TEXT2VEC_TRANSFORMERS,
         TEXT2VEC_OPENAI,

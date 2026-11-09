@@ -9,6 +9,7 @@ import org.junit.jupiter.params.provider.CsvSource;
 
 import io.weaviate.client6.v1.api.collections.Property;
 import io.weaviate.client6.v1.api.collections.vectorizers.SelfProvidedVectorizer;
+import io.weaviate.client6.v1.api.collections.vectorizers.Text2VecCohereVectorizer;
 import io.weaviate.client6.v1.api.collections.vectorizers.Text2VecModel2VecVectorizer;
 
 import static org.hamcrest.MatcherAssert.assertThat;
@@ -72,6 +73,11 @@ class SchemaTypeMappingTest {
         assertThat(named.getValue(), instanceOf(Text2VecModel2VecVectorizer.class));
 
         assertThat(SchemaCreate.buildVectorConfig(SchemaCreate.Vectorizer.TEXT2VEC_OPENAI, "text-embedding-3-small", null).getKey(), is("default"));
+
+        var cohere = SchemaCreate.buildVectorConfig(SchemaCreate.Vectorizer.TEXT2VEC_COHERE, "embed-v4.0", "content");
+        assertThat(cohere.getKey(), is("content"));
+        assertThat(((Text2VecCohereVectorizer) cohere.getValue()).model(), is("embed-v4.0"));
+        assertThat(SchemaCreate.buildVectorConfig(SchemaCreate.Vectorizer.TEXT2VEC_COHERE, null, null).getValue(), instanceOf(Text2VecCohereVectorizer.class));
         assertThrows(IllegalArgumentException.class, () -> SchemaCreate.buildVectorConfig(SchemaCreate.Vectorizer.TEXT2VEC_MODEL2VEC, "m", null));
     }
 }
