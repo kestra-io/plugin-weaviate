@@ -158,6 +158,37 @@ import reactor.core.publisher.Flux;
                     includeVector: true
                     fetchType: FETCH
                 """
+        ),
+        @Example(
+            title = "Range filters: orders from the last 7 days with a total between 100 and 500.",
+            full = true,
+            code = """
+                id: weaviate_range_filter
+                namespace: company.team
+
+                tasks:
+                  - id: recent_mid_size_orders
+                    type: io.kestra.plugin.weaviate.Query
+                    url: http://localhost:8080
+                    className: Order
+                    filters:
+                      - property: createdAt
+                        operator: GREATER_THAN_EQUAL
+                        value: "{{ now() | dateAdd(-7, 'DAYS') }}"
+                        valueType: DATE
+                      - property: total
+                        operator: GREATER_THAN_EQUAL
+                        value: 100
+                      - property: total
+                        operator: LESS_THAN_EQUAL
+                        value: 500
+                    returnProperties:
+                      - orderId
+                      - total
+                      - createdAt
+                    limit: 100
+                    fetchType: FETCH
+                """
         )
     }
 )

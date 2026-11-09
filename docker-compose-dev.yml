@@ -1,5 +1,6 @@
 # Local Weaviate + Kestra with the plugin built from this repository.
 # Build the plugin first (./gradlew clean shadowJar), then: docker compose -f docker-compose-dev.yml up -d
+# Set COHERE_API_KEY in your shell to use Cohere vectorization.
 name: kestra-weaviate-dev
 
 services:
@@ -17,7 +18,15 @@ services:
 
   kestra:
     image: kestra/kestra:v1.3.39-no-plugins
-    command: server local
+    # Turns COHERE_API_KEY into the base64 SECRET_COHERE_API_KEY variable Kestra reads secrets from,
+    # so flows can use {{ secret('COHERE_API_KEY') }}. Unset means no secret.
+    entrypoint:
+      - sh
+      - -c
+      - |
+        if [ -n "$$COHERE_API_KEY" ]; then export SECRET_COHERE_API_KEY="$$(printf %s "$$COHERE_API_KEY" | base64 -w0)"; fi
+        unset COHERE_API_KEY
+        exec /app/kestra server local
     user: root # lets Kestra write to the kestra-data volume, as in Kestra's own compose file
     ports:
       - 8081:8080 # UI and API, http://localhost:8081
@@ -25,8 +34,7 @@ services:
       - ./build/libs:/app/plugins # the jar from ./gradlew shadowJar
       - kestra-data:/app/data # flows, executions and files
     environment:
-      # Kestra secrets are base64 environment variables prefixed with SECRET_; see the README.
-      SECRET_COHERE_API_KEY: ${SECRET_COHERE_API_KEY:-}
+      COHERE_API_KEY: ${COHERE_API_KEY:-} # from your shell
       KESTRA_CONFIGURATION: |
         kestra:
           server:

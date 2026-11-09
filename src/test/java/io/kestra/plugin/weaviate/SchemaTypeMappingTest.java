@@ -63,6 +63,37 @@ class SchemaTypeMappingTest {
     }
 
     @Test
+    void buildsConfiguredProperties() {
+        var wordCount = SchemaCreate.buildProperty("wordCount", Map.of("type", "int", "indexRangeFilters", true, "description", "Length"), null);
+        assertThat(wordCount.dataTypes(), is(List.of("int")));
+        assertThat(wordCount.indexRangeFilters(), is(true));
+        assertThat(wordCount.description(), is("Length"));
+        assertThat(wordCount.indexFilterable(), nullValue());
+
+        var body = SchemaCreate.buildProperty(
+            "body",
+            Map.of("type", "text", "indexFilterable", "false", "indexSearchable", true, "skipVectorization", false, "vectorizePropertyName", false),
+            null
+        );
+        assertThat(body.indexFilterable(), is(false));
+        assertThat(body.indexSearchable(), is(true));
+        assertThat(body.skipVectorization(), is(false));
+        assertThat(body.vectorizePropertyName(), is(false));
+
+        assertThat(SchemaCreate.buildProperties(Map.of("a", "text", "b", Map.of("type", "date[]")), null), hasSize(2));
+    }
+
+    @Test
+    void rejectsInvalidPropertyOptions() {
+        var unknown = assertThrows(IllegalArgumentException.class, () -> SchemaCreate.buildProperty("p", Map.of("type", "int", "rangeable", true), null));
+        assertThat(unknown.getMessage(), containsString("unknown options [rangeable]"));
+        var noType = assertThrows(IllegalArgumentException.class, () -> SchemaCreate.buildProperty("p", Map.of("indexFilterable", false), null));
+        assertThat(noType.getMessage(), containsString("must set `type`"));
+        var badFlag = assertThrows(IllegalArgumentException.class, () -> SchemaCreate.buildProperty("p", Map.of("type", "int", "indexFilterable", "no"), null));
+        assertThat(badFlag.getMessage(), containsString("must be true or false"));
+    }
+
+    @Test
     void buildsVectorConfig() {
         var none = SchemaCreate.buildVectorConfig(SchemaCreate.Vectorizer.NONE, null, null);
         assertThat(none.getKey(), is("default"));

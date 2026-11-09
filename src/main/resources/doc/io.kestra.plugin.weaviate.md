@@ -15,7 +15,7 @@ Pass extra headers with `headers`, for example vectorizer API keys such as `X-Op
 
 ## Tasks
 
-`SchemaCreate` creates a collection. Set `className`, `fields` as a map of property name to Weaviate data type (`text`, `int`, `number`, `boolean`, `date`, `uuid`, their `[]` array forms, `blob`, `geoCoordinates`, `phoneNumber`), and optionally a `vectorizer`. Set `skipIfExists: true` to make the task idempotent.
+`SchemaCreate` creates a collection. Set `className`, `fields` as a map of property name to Weaviate data type (`text`, `int`, `number`, `boolean`, `date`, `uuid`, their `[]` array forms, `blob`, `geoCoordinates`, `phoneNumber`), and optionally a `vectorizer`. To configure a property, give a map with `type` and any of `description`, `indexFilterable`, `indexRangeFilters`, `indexSearchable`, `skipVectorization` and `vectorizePropertyName`, as in the example below. Set `skipIfExists: true` to make the task idempotent; an existing collection keeps its schema.
 
 `BatchCreate` inserts objects in batches of `batchSize`. Set `objects` to a `kestra://` URI of an ION file or an inline list of maps. Use `uuidKey` and `vectorKey` to take object IDs and precomputed vectors from the input. The task fails if Weaviate rejects any object, unless `failOnError` is false; rejected objects are then listed in the `errors` output.
 
@@ -44,12 +44,13 @@ Each result row is `{uuid, properties, metadata, vector?, vectors?}`. Request me
 
 This flow uses every task and nearly every option. It works with a knowledge base of articles:
 
-- **Collections:** `SchemaCreate` creates `Article`, whose `content` vector Weaviate computes from the text with Cohere (`TEXT2VEC_COHERE`, `vectorizerModel`), and `Snippet`, which stores vectors you provide.
+- **Collections:** `SchemaCreate` creates `Article`, whose `content` vector Weaviate computes from the text with Cohere (`TEXT2VEC_COHERE`, `vectorizerModel`), and `Snippet`, which stores vectors you provide. In `Article`, each field states how it is used: range-filtered (`indexRangeFilters`), never filtered (`indexFilterable: false`), never keyword-searched (`indexSearchable: false`), or kept out of the vector (`skipVectorization`).
 - **Loading:** `BatchCreate` loads articles from an ION file and from an inline list, and snippets with their own vectors (`vectorKey`, `targetVector`). One article is rejected on purpose; with `failOnError: false` it is reported in `errors` and the task still succeeds.
 - **Searching:** `Query` runs each search type:
   - `BM25` with boosted `queryProperties`;
   - `HYBRID` with `alpha` and a simple `filter`;
   - `NEAR_TEXT` with `certainty` and structured `filters` combined with `OR`;
+  - `FETCH_OBJECTS` with a range filter: two conditions on `wordCount`, combined with `AND`;
   - `NEAR_VECTOR`, once with the vector of an article fetched with `includeVector`, once with a hand-written vector.
 
   It also uses each `fetchType`: `FETCH`, `FETCH_ONE`, `STORE` and `NONE`.
@@ -78,15 +79,29 @@ tasks:
     vectorizerModel: embed-v4.0
     vectorName: content
     skipIfExists: true
+    # A bare type keeps Weaviate's defaults: searchable, filterable and vectorized.
+    # A map states how the property is used, so Weaviate only builds the indexes it needs.
     fields:
       title: text
-      body: text
-      category: text
+      body:
+        type: text
+        description: Full article text
+        indexFilterable: false    # searched (BM25 and vectors), never filtered on
+      category:
+        type: text
+        indexSearchable: false    # filtered on, never keyword-searched
+        skipVectorization: true   # a label, so keep it out of the vector
       tags: text[]
-      wordCount: int
-      rating: number
+      wordCount:
+        type: int
+        indexRangeFilters: true   # speeds up the range filter in `mid_length`
+      rating:
+        type: number
+        indexFilterable: false    # only displayed, never filtered on
       published: boolean
-      publishedAt: date
+      publishedAt:
+        type: date
+        indexRangeFilters: true   # speeds up the date filter in `near_text`
 
   # Collection for vectors you compute yourself.
   - id: create_snippets
@@ -256,19 +271,20 @@ tasks:
     returnMetadata: [CREATION_TIME, LAST_UPDATE_TIME]
     fetchType: STORE
 
-  # Long, well-rated articles: both conditions must match (filtersOperator defaults to AND).
-  - id: long_reads
+  # Range filter: articles of 600 to 1000 words. Both conditions must match (filtersOperator defaults to AND).
+  # The data has one article above the range (1200 words) and one below (300).
+  - id: mid_length
     type: io.kestra.plugin.weaviate.Query
     className: Article
     filters:
       - property: wordCount
-        operator: GREATER_THAN
-        value: 800
-      - property: rating
         operator: GREATER_THAN_EQUAL
-        value: 4.5
+        value: 600
+      - property: wordCount
+        operator: LESS_THAN_EQUAL
+        value: 1000
     limit: 100
-    returnProperties: [title]
+    returnProperties: [title, wordCount, rating]
     fetchType: FETCH
 
   # Runs the search without returning rows, e.g. to check the collection is reachable.
@@ -304,9 +320,9 @@ tasks:
         {{ row.metadata.distance | numberFormat('0.00') }} {{ row.properties.text }}
       {%- endfor %}
       Exported {{ outputs.export.size }} security articles to {{ outputs.export.uri }}
-      Long, well-rated reads ({{ outputs.long_reads.size }}):
-      {%- for row in outputs.long_reads.rows %}
-        {{ row.properties.title }}
+      Between 600 and 1000 words ({{ outputs.mid_length.size }}):
+      {%- for row in outputs.mid_length.rows %}
+        {{ row.properties.wordCount }} words, rated {{ row.properties.rating }}: {{ row.properties.title }}
       {%- endfor %}
 
   - id: delete_one
@@ -334,7 +350,7 @@ pluginDefaults:
       url: http://localhost:8080
       grpcHost: localhost
       grpcPort: 50051
-      requestTimeout: PT30S
+      requestTimeout: PT60S # includes the time Weaviate waits for Cohere to vectorize the query
       # For Weaviate Cloud, use your cluster URL and an API key; gRPC is detected automatically.
       # url: https://my-cluster.weaviate.cloud
       # apiKey: "{{ secret('WEAVIATE_API_KEY') }}"

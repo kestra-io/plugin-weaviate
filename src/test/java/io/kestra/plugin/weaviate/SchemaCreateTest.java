@@ -67,6 +67,30 @@ public class SchemaCreateTest extends WeaviateTest {
     }
 
     @Test
+    public void createsConfiguredProperties() throws Exception {
+        RunContext runContext = runContextFactory.of();
+
+        schemaCreate()
+            .fields(
+                Property.ofValue(
+                    Map.of(
+                        "title", "text",
+                        "wordCount", Map.of("type", "int", "indexRangeFilters", true),
+                        "body", Map.of("type", "text", "indexFilterable", false, "description", "Full text")
+                    )
+                )
+            )
+            .build()
+            .run(runContext);
+
+        var properties = config().properties().stream().collect(java.util.stream.Collectors.toMap(p -> p.propertyName(), p -> p));
+        assertThat(properties.get("wordCount").indexRangeFilters(), is(true));
+        assertThat(properties.get("body").indexFilterable(), is(false));
+        assertThat(properties.get("body").description(), is("Full text"));
+        assertThat(properties.get("title").indexFilterable(), is(true));
+    }
+
+    @Test
     public void createsCohereVectorizedCollection() throws Exception {
         RunContext runContext = runContextFactory.of();
 

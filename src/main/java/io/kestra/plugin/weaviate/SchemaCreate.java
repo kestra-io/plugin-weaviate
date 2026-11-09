@@ -4,6 +4,10 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Set;
+import java.util.TreeSet;
+import java.util.function.Consumer;
+import java.util.function.Function;
 
 import org.slf4j.Logger;
 
@@ -18,6 +22,7 @@ import io.weaviate.client6.v1.api.WeaviateClient;
 import io.weaviate.client6.v1.api.collections.Property;
 import io.weaviate.client6.v1.api.collections.VectorConfig;
 import io.weaviate.client6.v1.api.collections.VectorIndex;
+import io.weaviate.client6.v1.internal.ObjectBuilder;
 import jakarta.validation.constraints.NotNull;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
@@ -75,10 +80,43 @@ import lombok.experimental.SuperBuilder;
                       answer: text
                       category: text
                 """
+        ),
+        @Example(
+            title = "Configure how each property is indexed, e.g. enable range filters on numbers and dates.",
+            full = true,
+            code = """
+                id: create_weaviate_orders
+                namespace: company.team
+
+                tasks:
+                  - id: schema
+                    type: io.kestra.plugin.weaviate.SchemaCreate
+                    url: http://localhost:8080
+                    className: Order
+                    skipIfExists: true
+                    fields:
+                      orderId: uuid
+                      total:
+                        type: number
+                        indexRangeFilters: true
+                      createdAt:
+                        type: date
+                        indexRangeFilters: true
+                      note:
+                        type: text
+                        description: Free-text note from the customer
+                        indexFilterable: false
+                      status:
+                        type: text
+                        indexSearchable: false
+                """
         )
     }
 )
 public class SchemaCreate extends WeaviateConnection implements RunnableTask<SchemaCreate.Output> {
+    private static final Set<String> FIELD_OPTIONS = Set.of(
+        "type", "description", "indexFilterable", "indexRangeFilters", "indexSearchable", "skipVectorization", "vectorizePropertyName"
+    );
 
     @Schema(title = "Collection (class) name")
     @NotNull
@@ -89,7 +127,10 @@ public class SchemaCreate extends WeaviateConnection implements RunnableTask<Sch
         title = "Properties to add to the collection",
         description = """
             Map of property name to a Weaviate data type: text, int, number, boolean, date, uuid (each also as an array, e.g. text[]),
-            blob, geoCoordinates or phoneNumber. A single-element list is also accepted; the legacy `string` type maps to text."""
+            blob, geoCoordinates or phoneNumber. A single-element list is also accepted; the legacy `string` type maps to text.
+            To configure a property, give a map instead: `type` plus any of `description`, `indexFilterable` (equality filters),
+            `indexRangeFilters` (range filters on int, number and date), `indexSearchable` (BM25 on text), `skipVectorization`
+            and `vectorizePropertyName`. Unset options keep Weaviate's defaults."""
     )
     @PluginProperty(group = "main")
     private io.kestra.core.models.property.Property<Map<String, Object>> fields;
@@ -146,8 +187,53 @@ public class SchemaCreate extends WeaviateConnection implements RunnableTask<Sch
         if (fields == null) {
             return properties;
         }
-        fields.forEach((name, rawType) -> properties.add(buildProperty(name, dataType(name, rawType), logger)));
+        fields.forEach((name, spec) -> properties.add(buildProperty(name, spec, logger)));
         return properties;
+    }
+
+    static Property buildProperty(String name, Object spec, Logger logger) {
+        if (!(spec instanceof Map<?, ?> options)) {
+            return buildProperty(name, dataType(name, spec), logger);
+        }
+        var unknown = new TreeSet<String>();
+        options.keySet().forEach(key ->
+        {
+            if (!FIELD_OPTIONS.contains(String.valueOf(key))) {
+                unknown.add(String.valueOf(key));
+            }
+        });
+        if (!unknown.isEmpty()) {
+            throw new IllegalArgumentException("Field '" + name + "' has unknown options " + unknown + "; supported: " + new TreeSet<>(FIELD_OPTIONS) + ".");
+        }
+        if (!(options.get("type") instanceof String type)) {
+            throw new IllegalArgumentException("Field '" + name + "' must set `type` to a data type.");
+        }
+        return buildProperty(name, type, logger, b ->
+        {
+            if (options.get("description") != null) {
+                b.description(String.valueOf(options.get("description")));
+            }
+            flag(name, options, "indexFilterable", b::indexFilterable);
+            flag(name, options, "indexRangeFilters", b::indexRangeFilters);
+            flag(name, options, "indexSearchable", b::indexSearchable);
+            flag(name, options, "skipVectorization", b::skipVectorization);
+            flag(name, options, "vectorizePropertyName", b::vectorizePropertyName);
+            return b;
+        });
+    }
+
+    private static void flag(String name, Map<?, ?> options, String key, Consumer<Boolean> setter) {
+        var value = options.get(key);
+        if (value == null) {
+            return;
+        }
+        if (value instanceof Boolean bool) {
+            setter.accept(bool);
+        } else if ("true".equals(value) || "false".equals(value)) {
+            setter.accept(Boolean.parseBoolean((String) value));
+        } else {
+            throw new IllegalArgumentException("Field '" + name + "': `" + key + "` must be true or false, got " + value + ".");
+        }
     }
 
     private static String dataType(String name, Object rawType) {
@@ -161,6 +247,10 @@ public class SchemaCreate extends WeaviateConnection implements RunnableTask<Sch
     }
 
     static Property buildProperty(String name, String type, Logger logger) {
+        return buildProperty(name, type, logger, b -> b);
+    }
+
+    private static Property buildProperty(String name, String type, Logger logger, Function<Property.Builder, ObjectBuilder<Property>> o) {
         var normalized = type.trim().toLowerCase(Locale.ROOT);
         if (normalized.equals("string") || normalized.equals("string[]")) {
             if (logger != null) {
@@ -169,21 +259,21 @@ public class SchemaCreate extends WeaviateConnection implements RunnableTask<Sch
             normalized = normalized.replace("string", "text");
         }
         return switch (normalized) {
-            case "text" -> Property.text(name);
-            case "text[]" -> Property.textArray(name);
-            case "int" -> Property.integer(name);
-            case "int[]" -> Property.integerArray(name);
-            case "number" -> Property.number(name);
-            case "number[]" -> Property.numberArray(name);
-            case "boolean" -> Property.bool(name);
-            case "boolean[]" -> Property.boolArray(name);
-            case "date" -> Property.date(name);
-            case "date[]" -> Property.dateArray(name);
-            case "uuid" -> Property.uuid(name);
-            case "uuid[]" -> Property.uuidArray(name);
-            case "blob" -> Property.blob(name);
-            case "geocoordinates" -> Property.geoCoordinates(name);
-            case "phonenumber" -> Property.phoneNumber(name);
+            case "text" -> Property.text(name, o);
+            case "text[]" -> Property.textArray(name, o);
+            case "int" -> Property.integer(name, o);
+            case "int[]" -> Property.integerArray(name, o);
+            case "number" -> Property.number(name, o);
+            case "number[]" -> Property.numberArray(name, o);
+            case "boolean" -> Property.bool(name, o);
+            case "boolean[]" -> Property.boolArray(name, o);
+            case "date" -> Property.date(name, o);
+            case "date[]" -> Property.dateArray(name, o);
+            case "uuid" -> Property.uuid(name, o);
+            case "uuid[]" -> Property.uuidArray(name, o);
+            case "blob" -> Property.blob(name, o);
+            case "geocoordinates" -> Property.geoCoordinates(name, o);
+            case "phonenumber" -> Property.phoneNumber(name, o);
             case "object", "object[]" -> throw new IllegalArgumentException(
                 "Field '" + name + "': object properties need nested property definitions, which SchemaCreate does not support."
             );

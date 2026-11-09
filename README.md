@@ -65,19 +65,21 @@ This creates `build/libs/plugin-weaviate-<version>.jar`. Kestra loads every jar 
 
 ### 2. Start Weaviate and Kestra
 
-The example flow vectorizes text with Cohere. Kestra reads secrets from environment variables that start with `SECRET_` and hold a base64 value, so pass your Cohere API key like this:
+The example flow vectorizes text with Cohere. Set `COHERE_API_KEY` in your shell, if it isn't already set, and start the stack:
 
 ```bash
-export SECRET_COHERE_API_KEY=$(printf %s "your-cohere-api-key" | base64)
+export COHERE_API_KEY=your-cohere-api-key
 docker compose -f docker-compose-dev.yml up -d
 ```
+
+The compose file gives the key to Kestra as the `COHERE_API_KEY` secret, so flows use it with `{{ secret('COHERE_API_KEY') }}`. Don't set `SECRET_COHERE_API_KEY` yourself. Kestra expects that variable to be base64-encoded, and a raw key gives Weaviate an unusable key ("no api key found").
 
 This starts:
 
 - Weaviate 1.39.7: REST on `localhost:8080`, gRPC on `localhost:50051`.
 - Kestra with the plugin you just built: <http://localhost:8081>. Log in as `admin@kestra.io` with password `Admin1234`. Kestra takes about a minute to start.
 
-Both keep their data in Docker volumes, so it survives restarts. If you skip the Cohere key, flows that don't use a Cohere collection still work.
+Both keep their data in Docker volumes, so it survives restarts. If you skip the Cohere key, flows that don't use a Cohere collection still work. To change the key, set it again and run `docker compose -f docker-compose-dev.yml up -d`, which recreates Kestra with the new value.
 
 ### 3. Run the example flow
 
