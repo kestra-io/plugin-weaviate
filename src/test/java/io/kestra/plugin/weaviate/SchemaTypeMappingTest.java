@@ -106,6 +106,42 @@ class SchemaTypeMappingTest {
     }
 
     @Test
+    void buildsQuantization() {
+        var rq = SchemaCreate.buildQuantization(SchemaCreate.QuantizationOptions.builder().type(SchemaCreate.QuantizationType.RQ).bits(1).build());
+        assertThat(rq.isRQ(), is(true));
+        assertThat(rq.asRQ().bits(), is(1));
+        var pq = SchemaCreate.buildQuantization(
+            SchemaCreate.QuantizationOptions.builder()
+                .type(SchemaCreate.QuantizationType.PQ)
+                .segments(4)
+                .centroids(128)
+                .build()
+        );
+        assertThat(pq.isPQ(), is(true));
+        assertThat(SchemaCreate.buildQuantization(SchemaCreate.QuantizationOptions.builder().type(SchemaCreate.QuantizationType.NONE).build()).isUncompressed(), is(true));
+        assertThat(SchemaCreate.buildQuantization(null), nullValue());
+
+        var config = SchemaCreate.buildVectorConfig(SchemaCreate.Vectorizer.TEXT2VEC_COHERE, null, "content", null, rq);
+        assertThat(((Text2VecCohereVectorizer) config.getValue()).quantization().isRQ(), is(true));
+    }
+
+    @Test
+    void rejectsInvalidQuantization() {
+        var noType = assertThrows(IllegalArgumentException.class, () -> SchemaCreate.buildQuantization(SchemaCreate.QuantizationOptions.builder().bits(8).build()));
+        assertThat(noType.getMessage(), containsString("`quantization.type` is required"));
+        var wrongOption = assertThrows(
+            IllegalArgumentException.class,
+            () -> SchemaCreate.buildQuantization(SchemaCreate.QuantizationOptions.builder().type(SchemaCreate.QuantizationType.BQ).bits(8).build())
+        );
+        assertThat(wrongOption.getMessage(), containsString("`quantization.bits` is only supported with [RQ], not BQ"));
+        var badBits = assertThrows(
+            IllegalArgumentException.class,
+            () -> SchemaCreate.buildQuantization(SchemaCreate.QuantizationOptions.builder().type(SchemaCreate.QuantizationType.RQ).bits(4).build())
+        );
+        assertThat(badBits.getMessage(), containsString("must be 8 or 1"));
+    }
+
+    @Test
     void rejectsInvalidPropertyOptions() {
         var unknown = assertThrows(IllegalArgumentException.class, () -> SchemaCreate.buildProperty("p", Map.of("type", "int", "rangeable", true), null));
         assertThat(unknown.getMessage(), containsString("unknown options [rangeable]"));
@@ -139,10 +175,10 @@ class SchemaTypeMappingTest {
         assertThat(SchemaCreate.buildVectorConfig(SchemaCreate.Vectorizer.TEXT2VEC_COHERE, null, null).getValue(), instanceOf(Text2VecCohereVectorizer.class));
         assertThrows(IllegalArgumentException.class, () -> SchemaCreate.buildVectorConfig(SchemaCreate.Vectorizer.TEXT2VEC_MODEL2VEC, "m", null));
 
-        var sourced = SchemaCreate.buildVectorConfig(SchemaCreate.Vectorizer.TEXT2VEC_COHERE, "embed-v4.0", "content", List.of("title", "body"));
+        var sourced = SchemaCreate.buildVectorConfig(SchemaCreate.Vectorizer.TEXT2VEC_COHERE, "embed-v4.0", "content", List.of("title", "body"), null);
         assertThat(((Text2VecCohereVectorizer) sourced.getValue()).sourceProperties(), is(List.of("title", "body")));
         assertThat(((Text2VecCohereVectorizer) sourced.getValue()).model(), is("embed-v4.0"));
-        assertThrows(IllegalArgumentException.class, () -> SchemaCreate.buildVectorConfig(SchemaCreate.Vectorizer.NONE, null, null, List.of("title")));
-        assertThrows(IllegalArgumentException.class, () -> SchemaCreate.buildVectorConfig(SchemaCreate.Vectorizer.TEXT2VEC_COHERE, null, null, List.of()));
+        assertThrows(IllegalArgumentException.class, () -> SchemaCreate.buildVectorConfig(SchemaCreate.Vectorizer.NONE, null, null, List.of("title"), null));
+        assertThrows(IllegalArgumentException.class, () -> SchemaCreate.buildVectorConfig(SchemaCreate.Vectorizer.TEXT2VEC_COHERE, null, null, List.of(), null));
     }
 }

@@ -20,11 +20,14 @@ import io.kestra.core.runners.RunContext;
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.weaviate.client6.v1.api.WeaviateClient;
 import io.weaviate.client6.v1.api.collections.InvertedIndex;
+import io.weaviate.client6.v1.api.collections.MultiTenancy;
 import io.weaviate.client6.v1.api.collections.Property;
+import io.weaviate.client6.v1.api.collections.Quantization;
 import io.weaviate.client6.v1.api.collections.TextAnalyzer;
 import io.weaviate.client6.v1.api.collections.Tokenization;
 import io.weaviate.client6.v1.api.collections.VectorConfig;
 import io.weaviate.client6.v1.api.collections.VectorIndex;
+import io.weaviate.client6.v1.api.collections.tenants.Tenant;
 import io.weaviate.client6.v1.internal.ObjectBuilder;
 import jakarta.validation.constraints.NotNull;
 import lombok.*;
@@ -113,6 +116,44 @@ import lombok.experimental.SuperBuilder;
                         type: text
                         indexSearchable: false
                 """
+        ),
+        @Example(
+            title = "Multi-tenant collection with one tenant per customer and RQ-compressed vectors.",
+            full = true,
+            code = """
+                id: create_weaviate_tenants
+                namespace: company.team
+
+                tasks:
+                  - id: schema
+                    type: io.kestra.plugin.weaviate.SchemaCreate
+                    url: https://demo-cluster-id.weaviate.cloud
+                    apiKey: "{{ secret('WEAVIATE_API_KEY') }}"
+                    className: SupportTicket
+                    vectorizer: TEXT2VEC_WEAVIATE
+                    skipIfExists: true
+                    quantization:
+                      type: RQ
+                      bits: 8
+                    multiTenancy:
+                      autoTenantCreation: true
+                      tenants:
+                        - acme
+                        - globex
+                    fields:
+                      subject: text
+                      body: text
+
+                  - id: insert
+                    type: io.kestra.plugin.weaviate.BatchCreate
+                    url: https://demo-cluster-id.weaviate.cloud
+                    apiKey: "{{ secret('WEAVIATE_API_KEY') }}"
+                    className: SupportTicket
+                    tenant: acme
+                    objects:
+                      - subject: Cannot log in
+                        body: The password reset email never arrives.
+                """
         )
     }
 )
@@ -165,6 +206,16 @@ public class SchemaCreate extends WeaviateConnection implements RunnableTask<Sch
     @PluginProperty(group = "processing")
     private io.kestra.core.models.property.Property<List<String>> vectorizeProperties;
 
+    @Schema(
+        title = "Vector quantization (compression)",
+        description = """
+            Compresses the vectors to cut memory use, at a small cost in recall. `type` is RQ (rotational, recommended), BQ
+            (binary), SQ (scalar), PQ (product), or NONE to keep vectors uncompressed even if the server sets a default
+            quantization. Unset uses the server default. See https://docs.weaviate.io/weaviate/configuration/compression."""
+    )
+    @PluginProperty(group = "processing")
+    private io.kestra.core.models.property.Property<QuantizationOptions> quantization;
+
     @Schema(title = "Vector name", description = "Creates a named vector instead of the default one.")
     @PluginProperty(group = "processing")
     private io.kestra.core.models.property.Property<String> vectorName;
@@ -177,6 +228,17 @@ public class SchemaCreate extends WeaviateConnection implements RunnableTask<Sch
     )
     @PluginProperty(group = "advanced")
     private io.kestra.core.models.property.Property<InvertedIndexOptions> invertedIndex;
+
+    @Schema(
+        title = "Multi-tenancy",
+        description = """
+            Stores each tenant's objects in its own shard, so tenants are isolated and can be activated, deactivated or deleted
+            on their own. `BatchCreate`, `Query` and `Delete` then need `tenant`. `tenants` are created with the collection;
+            when the collection already exists and `skipIfExists` is true, missing ones are added.
+            See https://docs.weaviate.io/weaviate/manage-collections/multi-tenancy."""
+    )
+    @PluginProperty(group = "advanced")
+    private io.kestra.core.models.property.Property<MultiTenancyOptions> multiTenancy;
 
     @Schema(title = "Succeed without changes if the collection exists")
     @Builder.Default
@@ -192,15 +254,19 @@ public class SchemaCreate extends WeaviateConnection implements RunnableTask<Sch
             runContext.render(vectorizer).as(Vectorizer.class).orElse(Vectorizer.NONE),
             runContext.render(vectorizerModel).as(String.class).orElse(null),
             runContext.render(vectorName).as(String.class).orElse(null),
-            rVectorizeProperties.isEmpty() ? null : rVectorizeProperties
+            rVectorizeProperties.isEmpty() ? null : rVectorizeProperties,
+            buildQuantization(runContext.render(quantization).as(QuantizationOptions.class).orElse(null))
         );
         boolean rSkipIfExists = runContext.render(skipIfExists).as(Boolean.class).orElse(false);
         var rInvertedIndex = runContext.render(invertedIndex).as(InvertedIndexOptions.class).orElse(null);
+        var rMultiTenancy = runContext.render(multiTenancy).as(MultiTenancyOptions.class).orElse(null);
+        var tenantNames = tenantNames(rMultiTenancy);
 
         try (WeaviateClient client = connect(runContext)) {
             if (rSkipIfExists && client.collections.exists(rClassName)) {
-                runContext.logger().info("Collection '{}' already exists, skipping", rClassName);
-                return Output.builder().success(true).created(false).build();
+                var added = createMissingTenants(client, rClassName, tenantNames);
+                runContext.logger().info("Collection '{}' already exists, skipping; added {} missing tenants", rClassName, added.size());
+                return Output.builder().success(true).created(false).tenantsCreated(added).build();
             }
 
             client.collections.create(rClassName, c ->
@@ -209,11 +275,58 @@ public class SchemaCreate extends WeaviateConnection implements RunnableTask<Sch
                 if (rInvertedIndex != null) {
                     c.invertedIndex(buildInvertedIndex(rInvertedIndex));
                 }
+                if (rMultiTenancy != null) {
+                    c.multiTenancy(buildMultiTenancy(rMultiTenancy));
+                }
                 return c;
             });
+            var added = createMissingTenants(client, rClassName, tenantNames);
+            return Output.builder().success(true).created(true).tenantsCreated(added).build();
         }
+    }
 
-        return Output.builder().success(true).created(true).build();
+    static List<String> tenantNames(MultiTenancyOptions options) {
+        if (options == null || options.getTenants() == null || options.getTenants().isEmpty()) {
+            return List.of();
+        }
+        if (Boolean.FALSE.equals(options.getEnabled())) {
+            throw new IllegalArgumentException("`multiTenancy.tenants` needs multi-tenancy; remove `enabled: false`.");
+        }
+        var names = new java.util.LinkedHashSet<String>();
+        for (var name : options.getTenants()) {
+            if (name == null || name.isBlank()) {
+                throw new IllegalArgumentException("`multiTenancy.tenants` must not contain empty names.");
+            }
+            names.add(name);
+        }
+        return List.copyOf(names);
+    }
+
+    static MultiTenancy buildMultiTenancy(MultiTenancyOptions options) {
+        return MultiTenancy.of(m ->
+        {
+            m.enabled(options.getEnabled() == null || options.getEnabled());
+            if (options.getAutoTenantCreation() != null) {
+                m.autoTenantCreation(options.getAutoTenantCreation());
+            }
+            if (options.getAutoTenantActivation() != null) {
+                m.autoTenantActivation(options.getAutoTenantActivation());
+            }
+            return m;
+        });
+    }
+
+    private static List<String> createMissingTenants(WeaviateClient client, String className, List<String> names) throws java.io.IOException {
+        if (names.isEmpty()) {
+            return List.of();
+        }
+        var tenants = client.collections.use(className).tenants;
+        var existing = tenants.get(names).stream().map(Tenant::name).collect(java.util.stream.Collectors.toSet());
+        var missing = names.stream().filter(n -> !existing.contains(n)).toList();
+        if (!missing.isEmpty()) {
+            tenants.create(missing.stream().map(Tenant::active).toList());
+        }
+        return missing;
     }
 
     static List<Property> buildProperties(Map<String, Object> fields, Logger logger) {
@@ -407,30 +520,44 @@ public class SchemaCreate extends WeaviateConnection implements RunnableTask<Sch
     }
 
     static Map.Entry<String, VectorConfig> buildVectorConfig(Vectorizer vectorizer, String model, String name) {
-        return buildVectorConfig(vectorizer, model, name, null);
+        return buildVectorConfig(vectorizer, model, name, null, null);
     }
 
-    static Map.Entry<String, VectorConfig> buildVectorConfig(Vectorizer vectorizer, String model, String name, List<String> sourceProperties) {
+    static Map.Entry<String, VectorConfig> buildVectorConfig(
+        Vectorizer vectorizer, String model, String name, List<String> sourceProperties, Quantization quantization) {
         if (model != null && vectorizer != Vectorizer.TEXT2VEC_COHERE && vectorizer != Vectorizer.TEXT2VEC_OPENAI && vectorizer != Vectorizer.TEXT2VEC_WEAVIATE) {
             throw new IllegalArgumentException("`vectorizerModel` is only supported with TEXT2VEC_COHERE, TEXT2VEC_OPENAI and TEXT2VEC_WEAVIATE, not " + vectorizer + ".");
         }
         if (sourceProperties != null && sourceProperties.isEmpty()) {
             throw new IllegalArgumentException("`vectorizeProperties` must list at least one property.");
         }
-        if (vectorizer == Vectorizer.NONE) {
-            if (sourceProperties != null) {
-                throw new IllegalArgumentException("`vectorizeProperties` needs a vectorizer; with NONE, vectors are provided on insert.");
-            }
-            return name != null ? VectorConfig.selfProvided(name) : VectorConfig.selfProvided();
+        if (vectorizer == Vectorizer.NONE && sourceProperties != null) {
+            throw new IllegalArgumentException("`vectorizeProperties` needs a vectorizer; with NONE, vectors are provided on insert.");
         }
         var vectorName = name != null ? name : VectorIndex.DEFAULT_VECTOR_NAME;
         return switch (vectorizer) {
-            case TEXT2VEC_MODEL2VEC -> VectorConfig.text2vecModel2Vec(vectorName, v -> sourceProperties == null ? v : v.sourceProperties(sourceProperties));
-            case TEXT2VEC_TRANSFORMERS -> VectorConfig.text2vecTransformers(vectorName, v -> sourceProperties == null ? v : v.sourceProperties(sourceProperties));
+            case NONE -> VectorConfig.selfProvided(vectorName, v -> quantization == null ? v : v.quantization(quantization));
+            case TEXT2VEC_MODEL2VEC -> VectorConfig.text2vecModel2Vec(vectorName, v ->
+            {
+                if (quantization != null) {
+                    v.quantization(quantization);
+                }
+                return sourceProperties == null ? v : v.sourceProperties(sourceProperties);
+            });
+            case TEXT2VEC_TRANSFORMERS -> VectorConfig.text2vecTransformers(vectorName, v ->
+            {
+                if (quantization != null) {
+                    v.quantization(quantization);
+                }
+                return sourceProperties == null ? v : v.sourceProperties(sourceProperties);
+            });
             case TEXT2VEC_COHERE -> VectorConfig.text2vecCohere(vectorName, v ->
             {
                 if (model != null) {
                     v.model(model);
+                }
+                if (quantization != null) {
+                    v.quantization(quantization);
                 }
                 return sourceProperties == null ? v : v.sourceProperties(sourceProperties);
             });
@@ -439,6 +566,9 @@ public class SchemaCreate extends WeaviateConnection implements RunnableTask<Sch
                 if (model != null) {
                     v.model(model);
                 }
+                if (quantization != null) {
+                    v.quantization(quantization);
+                }
                 return sourceProperties == null ? v : v.sourceProperties(sourceProperties);
             });
             case TEXT2VEC_WEAVIATE -> VectorConfig.text2vecWeaviate(vectorName, v ->
@@ -446,10 +576,52 @@ public class SchemaCreate extends WeaviateConnection implements RunnableTask<Sch
                 if (model != null) {
                     v.model(model);
                 }
+                if (quantization != null) {
+                    v.quantization(quantization);
+                }
                 return sourceProperties == null ? v : v.sourceProperties(sourceProperties);
             });
-            case NONE -> throw new IllegalStateException("unreachable");
         };
+    }
+
+    static Quantization buildQuantization(QuantizationOptions options) {
+        if (options == null) {
+            return null;
+        }
+        if (options.getType() == null) {
+            throw new IllegalArgumentException("`quantization.type` is required: NONE, RQ, BQ, SQ or PQ.");
+        }
+        var type = options.getType();
+        allowed(type, "bits", options.getBits(), QuantizationType.RQ);
+        allowed(type, "segments", options.getSegments(), QuantizationType.PQ);
+        allowed(type, "centroids", options.getCentroids(), QuantizationType.PQ);
+        if (options.getBits() != null && options.getBits() != 1 && options.getBits() != 8) {
+            throw new IllegalArgumentException("`quantization.bits` must be 8 or 1, got " + options.getBits() + ".");
+        }
+        return switch (type) {
+            case NONE -> Quantization.uncompressed();
+            case RQ -> options.getBits() == null ? Quantization.rq() : Quantization.rq(q -> q.bits(options.getBits()));
+            case BQ -> Quantization.bq();
+            case SQ -> Quantization.sq();
+            case PQ -> Quantization.pq(q ->
+            {
+                if (options.getSegments() != null) {
+                    q.segments(options.getSegments());
+                }
+                if (options.getCentroids() != null) {
+                    q.centroids(options.getCentroids());
+                }
+                return q;
+            });
+        };
+    }
+
+    // client6 6.3.2 sends the other quantizer settings (rescoreLimit, trainingLimit, PQ encoder) in snake_case, which
+    // Weaviate ignores, so they are not exposed until the client is fixed.
+    private static void allowed(QuantizationType type, String option, Object value, QuantizationType... types) {
+        if (value != null && !List.of(types).contains(type)) {
+            throw new IllegalArgumentException("`quantization." + option + "` is only supported with " + List.of(types) + ", not " + type + ".");
+        }
     }
 
     @lombok.Value
@@ -503,6 +675,50 @@ public class SchemaCreate extends WeaviateConnection implements RunnableTask<Sch
         List<String> removals;
     }
 
+    @lombok.Value
+    @lombok.Builder
+    @lombok.extern.jackson.Jacksonized
+    @Schema(title = "Vector quantization", description = "See https://docs.weaviate.io/weaviate/concepts/vector-quantization.")
+    public static class QuantizationOptions {
+        @Schema(title = "Quantization method", description = "RQ, BQ, SQ, PQ, or NONE for uncompressed vectors.")
+        QuantizationType type;
+
+        @Schema(title = "Bits per dimension (RQ)", description = "8 (default, about 4x smaller) or 1 (about 32x smaller).")
+        Integer bits;
+
+        @Schema(title = "Number of segments (PQ)", description = "Must divide the vector dimensions. 0 lets Weaviate choose.")
+        Integer segments;
+
+        @Schema(title = "Centroids per segment (PQ)", description = "At most 256.")
+        Integer centroids;
+    }
+
+    @lombok.Value
+    @lombok.Builder
+    @lombok.extern.jackson.Jacksonized
+    @Schema(title = "Multi-tenancy settings")
+    public static class MultiTenancyOptions {
+        @Schema(title = "Enable multi-tenancy", description = "Defaults to true when `multiTenancy` is set.")
+        Boolean enabled;
+
+        @Schema(title = "Create unknown tenants on insert", description = "Lets `BatchCreate` write to a tenant that does not exist yet.")
+        Boolean autoTenantCreation;
+
+        @Schema(title = "Activate inactive tenants on access")
+        Boolean autoTenantActivation;
+
+        @Schema(title = "Tenants to create", description = "Created as active.")
+        List<String> tenants;
+    }
+
+    public enum QuantizationType {
+        NONE,
+        RQ,
+        BQ,
+        SQ,
+        PQ
+    }
+
     public enum Vectorizer {
         NONE,
         TEXT2VEC_COHERE,
@@ -521,5 +737,8 @@ public class SchemaCreate extends WeaviateConnection implements RunnableTask<Sch
 
         @Schema(title = "Whether the collection was created", description = "False when it already existed and `skipIfExists` is true.")
         private Boolean created;
+
+        @Schema(title = "Tenants created by this run")
+        private List<String> tenantsCreated;
     }
 }

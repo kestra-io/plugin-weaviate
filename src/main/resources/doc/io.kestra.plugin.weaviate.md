@@ -30,7 +30,7 @@ Pass extra headers with `headers`, for example vectorizer API keys such as `X-Op
 - `bm25` (`b`, `k1`) and `stopwords` (`preset`, `additions`, `removals`), which tune keyword search;
 - `cleanupIntervalSeconds`.
 
-Set `skipIfExists: true` to make the task idempotent; an existing collection keeps its schema.
+`quantization` compresses the vectors, and `multiTenancy` isolates data per tenant; both are described below. Set `skipIfExists: true` to make the task idempotent; an existing collection keeps its schema.
 
 `BatchCreate` inserts objects in batches of `batchSize`. Set `objects` to a `kestra://` URI of an ION file or an inline list of maps. Use `uuidKey` and `vectorKey` to take object IDs and precomputed vectors from the input. The task fails if Weaviate rejects any object, unless `failOnError` is false; rejected objects are then listed in the `errors` output.
 
@@ -72,15 +72,53 @@ Special properties:
 - `_creationTimeUnix`, `_lastUpdateTimeUnix`: object timestamps. These need `invertedIndex.indexTimestamps`.
 - `len(name)`: the length of a text or array property. This needs `invertedIndex.indexPropertyLength`.
 
+## Vector quantization
+
+Quantization compresses the vectors in memory, which cuts memory use and cost at a small loss in recall. Weaviate re-scores the top candidates with the original vectors to recover most of that loss. Set it when the collection is created, with `SchemaCreate.quantization`:
+
+| `type` | Compression | Options |
+|---|---|---|
+| `RQ` (rotational, recommended) | about 4x with `bits: 8` (default), about 32x with `bits: 1`; no training needed | `bits` |
+| `BQ` (binary) | about 32x; best with high-dimensional vectors | |
+| `SQ` (scalar) | about 4x; trains on the first objects | |
+| `PQ` (product) | configurable; trains on the first objects | `segments`, `centroids` |
+| `NONE` | none, even if the server sets a default quantization | |
+
+Without `quantization`, the server's default applies. That is no compression, unless the server sets one with `DEFAULT_QUANTIZATION`.
+
+To learn more, see these Weaviate docs:
+
+- [compression overview](https://docs.weaviate.io/weaviate/concepts/vector-quantization);
+- [how to configure compression](https://docs.weaviate.io/weaviate/configuration/compression);
+- one page per method: [RQ](https://docs.weaviate.io/weaviate/configuration/compression/rq-compression), [BQ](https://docs.weaviate.io/weaviate/configuration/compression/bq-compression), [SQ](https://docs.weaviate.io/weaviate/configuration/compression/sq-compression), [PQ](https://docs.weaviate.io/weaviate/configuration/compression/pq-compression);
+- [choosing a method](https://docs.weaviate.io/weaviate/starter-guides/managing-resources/compression).
+
+The plugin does not expose `rescoreLimit`, `trainingLimit` or the PQ encoder settings yet. The Weaviate Java client 6.3.2 sends them in a form the server ignores, so Weaviate's defaults apply.
+
+## Multi-tenancy
+
+A multi-tenant collection keeps each tenant's objects in a separate shard. Tenants never see each other's data, and each one can be activated, deactivated or deleted on its own. This suits one tenant per customer, team or user. Enable it with `SchemaCreate.multiTenancy`:
+
+- `tenants`: tenants to create with the collection. With `skipIfExists: true`, a rerun adds the ones that are missing. The `tenantsCreated` output lists the tenants each run added.
+- `autoTenantCreation`: `BatchCreate` creates a tenant the first time it writes to it.
+- `autoTenantActivation`: an inactive tenant is activated when it is accessed.
+
+`BatchCreate`, `Query` and `Delete` must then set `tenant`, and they only see that tenant's objects. To learn more, see the Weaviate docs on [multi-tenancy operations](https://docs.weaviate.io/weaviate/manage-collections/multi-tenancy) and [tenant states](https://docs.weaviate.io/weaviate/starter-guides/managing-resources/tenant-states).
+
 ## Example: load and search a collection
 
 This flow uses every task, every filter operator, and every index option. It works with a knowledge base of articles:
 
-- **Collections:** `SchemaCreate` creates `Article`, whose `content` vector Weaviate computes from the text with Cohere (`TEXT2VEC_COHERE`, `vectorizerModel`), and `Snippet`, which stores vectors you provide. In `Article`:
+- **Collections:** `SchemaCreate` creates three collections:
+  - `Article`: Weaviate computes its `content` vector from the text with Cohere (`TEXT2VEC_COHERE`, `vectorizerModel`), and compresses it with RQ quantization.
+  - `Snippet`: stores vectors you provide.
+  - `Note`: multi-tenant, one tenant per team. `team-a` is created up front and `team-b` on first insert.
+
+  In `Article`:
   - each field states how it is indexed: `indexRangeFilters`, `indexFilterable`, `indexSearchable`, `tokenization` and `textAnalyzer`;
   - `vectorizeProperties` keeps labels out of the vector;
   - `invertedIndex` turns on the indexes that the timestamp, null and length filters need, and tunes BM25 and stopwords.
-- **Loading:** `BatchCreate` loads articles from an ION file and from an inline list, and snippets with their own vectors (`vectorKey`, `targetVector`). One article is rejected on purpose; with `failOnError: false` it is reported in `errors` and the task still succeeds.
+- **Loading:** `BatchCreate` loads articles from an ION file and from an inline list, snippets with their own vectors (`vectorKey`, `targetVector`), and notes into each team's `tenant`. One article is rejected on purpose; with `failOnError: false` it is reported in `errors` and the task still succeeds.
 - **Searching:** `Query` runs each search type:
   - `BM25` with boosted `queryProperties`;
   - `HYBRID` with `alpha` and a simple `filter`;
@@ -95,13 +133,13 @@ This flow uses every task, every filter operator, and every index option. It wor
     - a nested group with `EQUAL`, `NOT_EQUAL`, `or` and `not`.
   - `NEAR_VECTOR`, once with the vector of an article fetched with `includeVector`, once with a hand-written vector.
 
-  It also uses each `fetchType`: `FETCH`, `FETCH_ONE`, `STORE` and `NONE`.
+  A `tenant` query returns only team-a's notes. The flow also uses each `fetchType`: `FETCH`, `FETCH_ONE`, `STORE` and `NONE`.
 - **Deleting:** `Delete` removes one object by `objectId`, then every draft by filter. The `reset` task shows `deleteAll` and is disabled.
 - **Connection:** `pluginDefaults` sets it once for all Weaviate tasks. It points at `http://weaviate:8080`, the Weaviate of the README's Docker Compose stack, so the flow runs there unchanged. It also passes the Cohere API key in `headers`, and comments show the `localhost` and Weaviate Cloud variants.
 
 Running the flow again is safe. `skipIfExists` reuses the collections, and `uuidKey` replaces objects that have the same `id` instead of duplicating them.
 
-Store your Cohere API key as the `COHERE_API_KEY` secret. Weaviate calls Cohere with it whenever it vectorizes objects or `NEAR_TEXT`/`HYBRID` queries. The `text2vec-cohere` module is enabled by default on recent Weaviate servers and on Weaviate Cloud. `tenant` is not shown, because it needs a multi-tenant collection, which `SchemaCreate` does not create.
+Store your Cohere API key as the `COHERE_API_KEY` secret. Weaviate calls Cohere with it whenever it vectorizes objects or `NEAR_TEXT`/`HYBRID` queries. The `text2vec-cohere` module is enabled by default on recent Weaviate servers and on Weaviate Cloud.
 
 ```yaml
 id: weaviate_load_and_search
@@ -121,6 +159,11 @@ tasks:
     vectorizerModel: embed-v4.0
     vectorName: content
     vectorizeProperties: [title, body]  # labels such as category and tags stay out of the vector
+    # Compresses the vectors about 4x (RQ, 8 bits per dimension) with little loss in recall.
+    # See https://docs.weaviate.io/weaviate/configuration/compression/rq-compression
+    quantization:
+      type: RQ
+      bits: 8
     skipIfExists: true
     # Collection-wide indexes that some filters need, and keyword-search tuning.
     invertedIndex:
@@ -174,6 +217,21 @@ tasks:
     vectorizer: NONE
     vectorName: embedding
     skipIfExists: true
+    fields:
+      text: text
+
+  # One tenant per team: each team's notes live in their own shard and never mix.
+  # team-a is created here; team-b is created on first insert (autoTenantCreation).
+  # See https://docs.weaviate.io/weaviate/manage-collections/multi-tenancy
+  - id: create_notes
+    type: io.kestra.plugin.weaviate.SchemaCreate
+    className: Note
+    vectorizer: NONE
+    skipIfExists: true             # on reruns, still adds tenants listed below that are missing
+    multiTenancy:
+      autoTenantCreation: true
+      autoTenantActivation: true
+      tenants: [team-a]
     fields:
       text: text
 
@@ -241,6 +299,31 @@ tasks:
       - {id: 7c0d3e1a-1111-4b6e-9a51-000000000001, text: north, vec: [1.0, 0.0, 0.0]}
       - {id: 7c0d3e1a-1111-4b6e-9a51-000000000002, text: north-east, vec: [0.7, 0.7, 0.0]}
       - {id: 7c0d3e1a-1111-4b6e-9a51-000000000003, text: up, vec: [0.0, 0.0, 1.0]}
+
+  - id: load_team_a_notes
+    type: io.kestra.plugin.weaviate.BatchCreate
+    className: Note
+    tenant: team-a
+    uuidKey: id
+    objects:
+      - {id: 9b1d0000-0000-4000-8000-0000000000a1, text: Rotate the staging API keys on Friday}
+      - {id: 9b1d0000-0000-4000-8000-0000000000a2, text: Restore test passed for the March backup}
+
+  - id: load_team_b_notes
+    type: io.kestra.plugin.weaviate.BatchCreate
+    className: Note
+    tenant: team-b
+    uuidKey: id
+    objects:
+      - {id: 9b1d0000-0000-4000-8000-0000000000b1, text: Add a read replica in us-east}
+
+  # Only team-a's notes, even without a filter.
+  - id: team_a_notes
+    type: io.kestra.plugin.weaviate.Query
+    className: Note
+    tenant: team-a
+    returnProperties: [text]
+    fetchType: FETCH
 
   # Keyword search, with matches in the title counting twice.
   - id: bm25
@@ -491,6 +574,8 @@ tasks:
       Titles under 25 characters: {{ outputs.short_titles.rows | jq('[.[].properties.title]') | first }}
       Written by this run: {{ outputs.updated_this_run.size }} articles
       Curated: {{ outputs.curated.rows | jq('[.[].properties.title]') | first }}
+      Tenants created by create_notes: {{ outputs.create_notes.tenantsCreated }}
+      team-a notes ({{ outputs.team_a_notes.size }}): {{ outputs.team_a_notes.rows | jq('[.[].properties.text]') | first }}
 
   - id: delete_one
     type: io.kestra.plugin.weaviate.Delete
