@@ -19,7 +19,10 @@ import io.kestra.core.runners.RunContext;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.weaviate.client6.v1.api.WeaviateClient;
+import io.weaviate.client6.v1.api.collections.InvertedIndex;
 import io.weaviate.client6.v1.api.collections.Property;
+import io.weaviate.client6.v1.api.collections.TextAnalyzer;
+import io.weaviate.client6.v1.api.collections.Tokenization;
 import io.weaviate.client6.v1.api.collections.VectorConfig;
 import io.weaviate.client6.v1.api.collections.VectorIndex;
 import io.weaviate.client6.v1.internal.ObjectBuilder;
@@ -115,8 +118,9 @@ import lombok.experimental.SuperBuilder;
 )
 public class SchemaCreate extends WeaviateConnection implements RunnableTask<SchemaCreate.Output> {
     private static final Set<String> FIELD_OPTIONS = Set.of(
-        "type", "description", "indexFilterable", "indexRangeFilters", "indexSearchable", "skipVectorization", "vectorizePropertyName"
+        "type", "description", "indexFilterable", "indexRangeFilters", "indexSearchable", "tokenization", "textAnalyzer"
     );
+    private static final Set<String> TEXT_ANALYZER_OPTIONS = Set.of("foldAscii", "keepAscii", "stopwordPreset");
 
     @Schema(title = "Collection (class) name")
     @NotNull
@@ -129,8 +133,10 @@ public class SchemaCreate extends WeaviateConnection implements RunnableTask<Sch
             Map of property name to a Weaviate data type: text, int, number, boolean, date, uuid (each also as an array, e.g. text[]),
             blob, geoCoordinates or phoneNumber. A single-element list is also accepted; the legacy `string` type maps to text.
             To configure a property, give a map instead: `type` plus any of `description`, `indexFilterable` (equality filters),
-            `indexRangeFilters` (range filters on int, number and date), `indexSearchable` (BM25 on text), `skipVectorization`
-            and `vectorizePropertyName`. Unset options keep Weaviate's defaults."""
+            `indexRangeFilters` (range filters on int, number and date), `indexSearchable` (BM25 on text), `tokenization`
+            (how text is split into tokens: WORD, LOWERCASE, WHITESPACE, FIELD, TRIGRAM, GSE, KAGOME_JA or KAGOME_KR),
+            and `textAnalyzer` (`foldAscii`, `keepAscii`, `stopwordPreset`). Unset options keep Weaviate's defaults.
+            To choose which properties are vectorized, use `vectorizeProperties`."""
     )
     @PluginProperty(group = "main")
     private io.kestra.core.models.property.Property<Map<String, Object>> fields;
@@ -150,9 +156,27 @@ public class SchemaCreate extends WeaviateConnection implements RunnableTask<Sch
     @PluginProperty(group = "processing")
     private io.kestra.core.models.property.Property<String> vectorizerModel;
 
+    @Schema(
+        title = "Properties the vectorizer embeds",
+        description = """
+            Text properties the vectorizer turns into the vector (Weaviate's `sourceProperties`). Defaults to all text properties.
+            Leave out labels and IDs so they don't affect similarity."""
+    )
+    @PluginProperty(group = "processing")
+    private io.kestra.core.models.property.Property<List<String>> vectorizeProperties;
+
     @Schema(title = "Vector name", description = "Creates a named vector instead of the default one.")
     @PluginProperty(group = "processing")
     private io.kestra.core.models.property.Property<String> vectorName;
+
+    @Schema(
+        title = "Collection-wide inverted index settings",
+        description = """
+            Enables the extra indexes some filters need (`indexTimestamps`, `indexNullState`, `indexPropertyLength`) and tunes
+            keyword search (`bm25`, `stopwords`). Unset values keep Weaviate's defaults."""
+    )
+    @PluginProperty(group = "advanced")
+    private io.kestra.core.models.property.Property<InvertedIndexOptions> invertedIndex;
 
     @Schema(title = "Succeed without changes if the collection exists")
     @Builder.Default
@@ -163,12 +187,15 @@ public class SchemaCreate extends WeaviateConnection implements RunnableTask<Sch
     public SchemaCreate.Output run(RunContext runContext) throws Exception {
         var rClassName = runContext.render(className).as(String.class).orElseThrow(() -> new IllegalArgumentException("`className` is required."));
         var properties = buildProperties(runContext.render(fields).asMap(String.class, Object.class), runContext.logger());
+        var rVectorizeProperties = runContext.render(vectorizeProperties).asList(String.class);
         var vectorConfig = buildVectorConfig(
             runContext.render(vectorizer).as(Vectorizer.class).orElse(Vectorizer.NONE),
             runContext.render(vectorizerModel).as(String.class).orElse(null),
-            runContext.render(vectorName).as(String.class).orElse(null)
+            runContext.render(vectorName).as(String.class).orElse(null),
+            rVectorizeProperties.isEmpty() ? null : rVectorizeProperties
         );
         boolean rSkipIfExists = runContext.render(skipIfExists).as(Boolean.class).orElse(false);
+        var rInvertedIndex = runContext.render(invertedIndex).as(InvertedIndexOptions.class).orElse(null);
 
         try (WeaviateClient client = connect(runContext)) {
             if (rSkipIfExists && client.collections.exists(rClassName)) {
@@ -176,7 +203,14 @@ public class SchemaCreate extends WeaviateConnection implements RunnableTask<Sch
                 return Output.builder().success(true).created(false).build();
             }
 
-            client.collections.create(rClassName, c -> c.properties(properties).vectorConfig(vectorConfig));
+            client.collections.create(rClassName, c ->
+            {
+                c.properties(properties).vectorConfig(vectorConfig);
+                if (rInvertedIndex != null) {
+                    c.invertedIndex(buildInvertedIndex(rInvertedIndex));
+                }
+                return c;
+            });
         }
 
         return Output.builder().success(true).created(true).build();
@@ -216,8 +250,12 @@ public class SchemaCreate extends WeaviateConnection implements RunnableTask<Sch
             flag(name, options, "indexFilterable", b::indexFilterable);
             flag(name, options, "indexRangeFilters", b::indexRangeFilters);
             flag(name, options, "indexSearchable", b::indexSearchable);
-            flag(name, options, "skipVectorization", b::skipVectorization);
-            flag(name, options, "vectorizePropertyName", b::vectorizePropertyName);
+            if (options.get("tokenization") != null) {
+                b.tokenization(tokenization(name, options.get("tokenization")));
+            }
+            if (options.get("textAnalyzer") != null) {
+                b.textAnalyzer(textAnalyzer(name, options.get("textAnalyzer")));
+            }
             return b;
         });
     }
@@ -234,6 +272,91 @@ public class SchemaCreate extends WeaviateConnection implements RunnableTask<Sch
         } else {
             throw new IllegalArgumentException("Field '" + name + "': `" + key + "` must be true or false, got " + value + ".");
         }
+    }
+
+    private static Tokenization tokenization(String name, Object value) {
+        try {
+            return Tokenization.valueOf(String.valueOf(value).trim().toUpperCase(Locale.ROOT));
+        } catch (IllegalArgumentException e) {
+            throw new IllegalArgumentException(
+                "Field '" + name + "': unknown `tokenization` '" + value + "'; supported: " + java.util.Arrays.toString(Tokenization.values()) + "."
+            );
+        }
+    }
+
+    private static TextAnalyzer textAnalyzer(String name, Object value) {
+        if (!(value instanceof Map<?, ?> options)) {
+            throw new IllegalArgumentException("Field '" + name + "': `textAnalyzer` must be a map with " + new TreeSet<>(TEXT_ANALYZER_OPTIONS) + ".");
+        }
+        options.keySet().forEach(key ->
+        {
+            if (!TEXT_ANALYZER_OPTIONS.contains(String.valueOf(key))) {
+                throw new IllegalArgumentException(
+                    "Field '" + name + "': unknown `textAnalyzer` option '" + key + "'; supported: " + new TreeSet<>(TEXT_ANALYZER_OPTIONS) + "."
+                );
+            }
+        });
+        return TextAnalyzer.of(a ->
+        {
+            flag(name, options, "foldAscii", a::foldAscii);
+            if (options.get("keepAscii") instanceof List<?> keep) {
+                a.keepAscii(keep.stream().map(String::valueOf).toList());
+            } else if (options.get("keepAscii") != null) {
+                throw new IllegalArgumentException("Field '" + name + "': `textAnalyzer.keepAscii` must be a list of characters.");
+            }
+            if (options.get("stopwordPreset") != null) {
+                a.stopwordPreset(String.valueOf(options.get("stopwordPreset")));
+            }
+            return a;
+        });
+    }
+
+    static InvertedIndex buildInvertedIndex(InvertedIndexOptions options) {
+        return InvertedIndex.of(i ->
+        {
+            if (options.getIndexTimestamps() != null) {
+                i.indexTimestamps(options.getIndexTimestamps());
+            }
+            if (options.getIndexNullState() != null) {
+                i.indexNulls(options.getIndexNullState());
+            }
+            if (options.getIndexPropertyLength() != null) {
+                i.indexPropertyLength(options.getIndexPropertyLength());
+            }
+            if (options.getCleanupIntervalSeconds() != null) {
+                i.cleanupIntervalSeconds(options.getCleanupIntervalSeconds());
+            }
+            var bm25 = options.getBm25();
+            if (bm25 != null) {
+                i.bm25(b ->
+                {
+                    if (bm25.getB() != null) {
+                        b.b(bm25.getB().floatValue());
+                    }
+                    if (bm25.getK1() != null) {
+                        b.k1(bm25.getK1().floatValue());
+                    }
+                    return b;
+                });
+            }
+            var stopwords = options.getStopwords();
+            if (stopwords != null) {
+                i.stopwords(w ->
+                {
+                    if (stopwords.getPreset() != null) {
+                        w.preset(stopwords.getPreset());
+                    }
+                    if (stopwords.getAdditions() != null) {
+                        w.add(stopwords.getAdditions());
+                    }
+                    if (stopwords.getRemovals() != null) {
+                        w.remove(stopwords.getRemovals());
+                    }
+                    return w;
+                });
+            }
+            return i;
+        });
     }
 
     private static String dataType(String name, Object rawType) {
@@ -284,23 +407,100 @@ public class SchemaCreate extends WeaviateConnection implements RunnableTask<Sch
     }
 
     static Map.Entry<String, VectorConfig> buildVectorConfig(Vectorizer vectorizer, String model, String name) {
+        return buildVectorConfig(vectorizer, model, name, null);
+    }
+
+    static Map.Entry<String, VectorConfig> buildVectorConfig(Vectorizer vectorizer, String model, String name, List<String> sourceProperties) {
         if (model != null && vectorizer != Vectorizer.TEXT2VEC_COHERE && vectorizer != Vectorizer.TEXT2VEC_OPENAI && vectorizer != Vectorizer.TEXT2VEC_WEAVIATE) {
             throw new IllegalArgumentException("`vectorizerModel` is only supported with TEXT2VEC_COHERE, TEXT2VEC_OPENAI and TEXT2VEC_WEAVIATE, not " + vectorizer + ".");
         }
+        if (sourceProperties != null && sourceProperties.isEmpty()) {
+            throw new IllegalArgumentException("`vectorizeProperties` must list at least one property.");
+        }
+        if (vectorizer == Vectorizer.NONE) {
+            if (sourceProperties != null) {
+                throw new IllegalArgumentException("`vectorizeProperties` needs a vectorizer; with NONE, vectors are provided on insert.");
+            }
+            return name != null ? VectorConfig.selfProvided(name) : VectorConfig.selfProvided();
+        }
+        var vectorName = name != null ? name : VectorIndex.DEFAULT_VECTOR_NAME;
         return switch (vectorizer) {
-            case NONE -> name != null ? VectorConfig.selfProvided(name) : VectorConfig.selfProvided();
-            case TEXT2VEC_MODEL2VEC -> name != null ? VectorConfig.text2vecModel2Vec(name) : VectorConfig.text2vecModel2Vec();
-            case TEXT2VEC_TRANSFORMERS -> name != null ? VectorConfig.text2vecTransformers(name) : VectorConfig.text2vecTransformers();
-            case TEXT2VEC_COHERE -> model == null
-                ? (name != null ? VectorConfig.text2vecCohere(name) : VectorConfig.text2vecCohere())
-                : VectorConfig.text2vecCohere(name != null ? name : VectorIndex.DEFAULT_VECTOR_NAME, v -> v.model(model));
-            case TEXT2VEC_OPENAI -> model == null
-                ? (name != null ? VectorConfig.text2vecOpenAi(name) : VectorConfig.text2vecOpenAi())
-                : VectorConfig.text2vecOpenAi(name != null ? name : VectorIndex.DEFAULT_VECTOR_NAME, v -> v.model(model));
-            case TEXT2VEC_WEAVIATE -> model == null
-                ? (name != null ? VectorConfig.text2vecWeaviate(name) : VectorConfig.text2vecWeaviate())
-                : VectorConfig.text2vecWeaviate(name != null ? name : VectorIndex.DEFAULT_VECTOR_NAME, v -> v.model(model));
+            case TEXT2VEC_MODEL2VEC -> VectorConfig.text2vecModel2Vec(vectorName, v -> sourceProperties == null ? v : v.sourceProperties(sourceProperties));
+            case TEXT2VEC_TRANSFORMERS -> VectorConfig.text2vecTransformers(vectorName, v -> sourceProperties == null ? v : v.sourceProperties(sourceProperties));
+            case TEXT2VEC_COHERE -> VectorConfig.text2vecCohere(vectorName, v ->
+            {
+                if (model != null) {
+                    v.model(model);
+                }
+                return sourceProperties == null ? v : v.sourceProperties(sourceProperties);
+            });
+            case TEXT2VEC_OPENAI -> VectorConfig.text2vecOpenAi(vectorName, v ->
+            {
+                if (model != null) {
+                    v.model(model);
+                }
+                return sourceProperties == null ? v : v.sourceProperties(sourceProperties);
+            });
+            case TEXT2VEC_WEAVIATE -> VectorConfig.text2vecWeaviate(vectorName, v ->
+            {
+                if (model != null) {
+                    v.model(model);
+                }
+                return sourceProperties == null ? v : v.sourceProperties(sourceProperties);
+            });
+            case NONE -> throw new IllegalStateException("unreachable");
         };
+    }
+
+    @lombok.Value
+    @lombok.Builder
+    @lombok.extern.jackson.Jacksonized
+    @Schema(title = "Inverted index settings")
+    public static class InvertedIndexOptions {
+        @Schema(title = "Index creation and update times", description = "Needed to filter on `_creationTimeUnix` and `_lastUpdateTimeUnix`.")
+        Boolean indexTimestamps;
+
+        @Schema(title = "Index whether properties are null", description = "Needed for the IS_NULL filter operator.")
+        Boolean indexNullState;
+
+        @Schema(title = "Index the length of text and array properties", description = "Needed to filter on `len(property)`.")
+        Boolean indexPropertyLength;
+
+        @Schema(title = "BM25 ranking parameters")
+        Bm25Options bm25;
+
+        @Schema(title = "Stopwords ignored by keyword search")
+        StopwordsOptions stopwords;
+
+        @Schema(title = "Seconds between cleanups of deleted objects in the inverted index")
+        Integer cleanupIntervalSeconds;
+    }
+
+    @lombok.Value
+    @lombok.Builder
+    @lombok.extern.jackson.Jacksonized
+    @Schema(title = "BM25 ranking parameters")
+    public static class Bm25Options {
+        @Schema(title = "Length normalization, 0 to 1", description = "Weaviate's default is 0.75.")
+        Double b;
+
+        @Schema(title = "Term frequency saturation", description = "Weaviate's default is 1.2.")
+        Double k1;
+    }
+
+    @lombok.Value
+    @lombok.Builder
+    @lombok.extern.jackson.Jacksonized
+    @Schema(title = "Stopwords")
+    public static class StopwordsOptions {
+        @Schema(title = "Preset", description = "`en` (default) or `none`.")
+        String preset;
+
+        @Schema(title = "Words to add to the preset")
+        List<String> additions;
+
+        @Schema(title = "Words to remove from the preset")
+        List<String> removals;
     }
 
     public enum Vectorizer {

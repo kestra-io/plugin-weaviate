@@ -72,15 +72,37 @@ class SchemaTypeMappingTest {
 
         var body = SchemaCreate.buildProperty(
             "body",
-            Map.of("type", "text", "indexFilterable", "false", "indexSearchable", true, "skipVectorization", false, "vectorizePropertyName", false),
+            Map.of("type", "text", "indexFilterable", "false", "indexSearchable", true),
             null
         );
         assertThat(body.indexFilterable(), is(false));
         assertThat(body.indexSearchable(), is(true));
-        assertThat(body.skipVectorization(), is(false));
-        assertThat(body.vectorizePropertyName(), is(false));
 
         assertThat(SchemaCreate.buildProperties(Map.of("a", "text", "b", Map.of("type", "date[]")), null), hasSize(2));
+    }
+
+    @Test
+    void buildsTokenizationTextAnalyzerAndInvertedIndex() {
+        var name = SchemaCreate.buildProperty("name", Map.of("type", "text", "tokenization", "field", "textAnalyzer", Map.of("foldAscii", true, "keepAscii", List.of("é"))), null);
+        assertThat(name.tokenization(), is(io.weaviate.client6.v1.api.collections.Tokenization.FIELD));
+        assertThat(name.textAnalyzer().foldAscii(), is(true));
+        assertThat(name.textAnalyzer().keepAscii(), is(List.of("é")));
+
+        var index = SchemaCreate.buildInvertedIndex(
+            SchemaCreate.InvertedIndexOptions.builder()
+                .indexTimestamps(true)
+                .indexNullState(true)
+                .indexPropertyLength(false)
+                .bm25(SchemaCreate.Bm25Options.builder().b(0.7).k1(1.1).build())
+                .stopwords(SchemaCreate.StopwordsOptions.builder().preset("en").additions(List.of("kestra")).removals(List.of("a")).build())
+                .cleanupIntervalSeconds(30)
+                .build()
+        );
+        assertThat(index.indexTimestamps(), is(true));
+        assertThat(index.indexNulls(), is(true));
+        assertThat(index.indexPropertyLength(), is(false));
+        assertThat((double) index.bm25().b(), closeTo(0.7, 1e-6));
+        assertThat(index.cleanupIntervalSeconds(), is(30));
     }
 
     @Test
@@ -89,6 +111,12 @@ class SchemaTypeMappingTest {
         assertThat(unknown.getMessage(), containsString("unknown options [rangeable]"));
         var noType = assertThrows(IllegalArgumentException.class, () -> SchemaCreate.buildProperty("p", Map.of("indexFilterable", false), null));
         assertThat(noType.getMessage(), containsString("must set `type`"));
+        var badTokenization = assertThrows(IllegalArgumentException.class, () -> SchemaCreate.buildProperty("p", Map.of("type", "text", "tokenization", "words"), null));
+        assertThat(badTokenization.getMessage(), containsString("unknown `tokenization` 'words'"));
+        var badAnalyzer = assertThrows(
+            IllegalArgumentException.class, () -> SchemaCreate.buildProperty("p", Map.of("type", "text", "textAnalyzer", Map.of("fold", true)), null)
+        );
+        assertThat(badAnalyzer.getMessage(), containsString("unknown `textAnalyzer` option 'fold'"));
         var badFlag = assertThrows(IllegalArgumentException.class, () -> SchemaCreate.buildProperty("p", Map.of("type", "int", "indexFilterable", "no"), null));
         assertThat(badFlag.getMessage(), containsString("must be true or false"));
     }
@@ -110,5 +138,11 @@ class SchemaTypeMappingTest {
         assertThat(((Text2VecCohereVectorizer) cohere.getValue()).model(), is("embed-v4.0"));
         assertThat(SchemaCreate.buildVectorConfig(SchemaCreate.Vectorizer.TEXT2VEC_COHERE, null, null).getValue(), instanceOf(Text2VecCohereVectorizer.class));
         assertThrows(IllegalArgumentException.class, () -> SchemaCreate.buildVectorConfig(SchemaCreate.Vectorizer.TEXT2VEC_MODEL2VEC, "m", null));
+
+        var sourced = SchemaCreate.buildVectorConfig(SchemaCreate.Vectorizer.TEXT2VEC_COHERE, "embed-v4.0", "content", List.of("title", "body"));
+        assertThat(((Text2VecCohereVectorizer) sourced.getValue()).sourceProperties(), is(List.of("title", "body")));
+        assertThat(((Text2VecCohereVectorizer) sourced.getValue()).model(), is("embed-v4.0"));
+        assertThrows(IllegalArgumentException.class, () -> SchemaCreate.buildVectorConfig(SchemaCreate.Vectorizer.NONE, null, null, List.of("title")));
+        assertThrows(IllegalArgumentException.class, () -> SchemaCreate.buildVectorConfig(SchemaCreate.Vectorizer.TEXT2VEC_COHERE, null, null, List.of()));
     }
 }

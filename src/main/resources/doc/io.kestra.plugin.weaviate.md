@@ -15,7 +15,22 @@ Pass extra headers with `headers`, for example vectorizer API keys such as `X-Op
 
 ## Tasks
 
-`SchemaCreate` creates a collection. Set `className`, `fields` as a map of property name to Weaviate data type (`text`, `int`, `number`, `boolean`, `date`, `uuid`, their `[]` array forms, `blob`, `geoCoordinates`, `phoneNumber`), and optionally a `vectorizer`. To configure a property, give a map with `type` and any of `description`, `indexFilterable`, `indexRangeFilters`, `indexSearchable`, `skipVectorization` and `vectorizePropertyName`, as in the example below. Set `skipIfExists: true` to make the task idempotent; an existing collection keeps its schema.
+`SchemaCreate` creates a collection. Set `className`, `fields` as a map of property name to Weaviate data type (`text`, `int`, `number`, `boolean`, `date`, `uuid`, their `[]` array forms, `blob`, `geoCoordinates`, `phoneNumber`), and optionally a `vectorizer`. To configure a property, give a map with `type` and any of the following, as in the example below:
+
+- `description`;
+- `indexFilterable`, for equality and most filters;
+- `indexRangeFilters`, for faster `>`, `<`, `>=` and `<=` on `int`, `number` and `date`;
+- `indexSearchable`, for BM25;
+- `tokenization`: `WORD`, `LOWERCASE`, `WHITESPACE`, `FIELD`, `TRIGRAM`, `GSE`, `KAGOME_JA` or `KAGOME_KR`;
+- `textAnalyzer`: `foldAscii`, `keepAscii` or `stopwordPreset`.
+
+`vectorizeProperties` chooses which properties the vectorizer embeds. `invertedIndex` sets collection-wide options:
+
+- `indexTimestamps`, `indexNullState` and `indexPropertyLength`, which some filters need;
+- `bm25` (`b`, `k1`) and `stopwords` (`preset`, `additions`, `removals`), which tune keyword search;
+- `cleanupIntervalSeconds`.
+
+Set `skipIfExists: true` to make the task idempotent; an existing collection keeps its schema.
 
 `BatchCreate` inserts objects in batches of `batchSize`. Set `objects` to a `kestra://` URI of an ION file or an inline list of maps. Use `uuidKey` and `vectorKey` to take object IDs and precomputed vectors from the input. The task fails if Weaviate rejects any object, unless `failOnError` is false; rejected objects are then listed in the `errors` output.
 
@@ -38,19 +53,46 @@ Each result row is `{uuid, properties, metadata, vector?, vectors?}`. Request me
 `Query` and `Delete` accept two filter forms, which can be combined (both must match):
 
 - `filter`: a map of property to value, combined with AND. Text values use `LIKE`, so `*` wildcards work; other values use `EQUAL`.
-- `filters`: a list of `{property, operator, value, valueType}` conditions, combined with `filtersOperator` (`AND` or `OR`). Operators: `EQUAL`, `NOT_EQUAL`, `GREATER_THAN`, `GREATER_THAN_EQUAL`, `LESS_THAN`, `LESS_THAN_EQUAL`, `LIKE`, `CONTAINS_ANY`, `CONTAINS_ALL`, `CONTAINS_NONE`, `IS_NULL`. Set `valueType: DATE` or `UUID` for dates and UUIDs written as strings. Use `_id` to filter by object UUID.
+- `filters`: a list of `{property, operator, value, valueType}` conditions, combined with `filtersOperator` (`AND` or `OR`). Set `valueType: DATE` or `UUID` for dates and UUIDs written as strings.
+
+  An entry can also be a group: `and` or `or` with a list of conditions, or `not` with one condition. Groups nest, as in the `curated` task of the example below.
+
+| Operator | Matches | Needs |
+|---|---|---|
+| `EQUAL`, `NOT_EQUAL` | equal, not equal | |
+| `GREATER_THAN`, `GREATER_THAN_EQUAL`, `LESS_THAN`, `LESS_THAN_EQUAL` | numbers, dates and text compared | `indexRangeFilters` makes them faster on `int`, `number` and `date` |
+| `LIKE` | text with `*` and `?` wildcards | |
+| `CONTAINS_ANY`, `CONTAINS_ALL`, `CONTAINS_NONE` | arrays holding any, all or none of the listed values; on text, any, all or none of the tokens | |
+| `IS_NULL` | `value: true` for missing values, `false` for present ones | `invertedIndex.indexNullState` |
+| `WITHIN_GEO_RANGE` | `geoCoordinates` within `value.distance` meters of `value.latitude`/`value.longitude` | |
+
+Special properties:
+
+- `_id`: the object UUID.
+- `_creationTimeUnix`, `_lastUpdateTimeUnix`: object timestamps. These need `invertedIndex.indexTimestamps`.
+- `len(name)`: the length of a text or array property. This needs `invertedIndex.indexPropertyLength`.
 
 ## Example: load and search a collection
 
-This flow uses every task and nearly every option. It works with a knowledge base of articles:
+This flow uses every task, every filter operator, and every index option. It works with a knowledge base of articles:
 
-- **Collections:** `SchemaCreate` creates `Article`, whose `content` vector Weaviate computes from the text with Cohere (`TEXT2VEC_COHERE`, `vectorizerModel`), and `Snippet`, which stores vectors you provide. In `Article`, each field states how it is used: range-filtered (`indexRangeFilters`), never filtered (`indexFilterable: false`), never keyword-searched (`indexSearchable: false`), or kept out of the vector (`skipVectorization`).
+- **Collections:** `SchemaCreate` creates `Article`, whose `content` vector Weaviate computes from the text with Cohere (`TEXT2VEC_COHERE`, `vectorizerModel`), and `Snippet`, which stores vectors you provide. In `Article`:
+  - each field states how it is indexed: `indexRangeFilters`, `indexFilterable`, `indexSearchable`, `tokenization` and `textAnalyzer`;
+  - `vectorizeProperties` keeps labels out of the vector;
+  - `invertedIndex` turns on the indexes that the timestamp, null and length filters need, and tunes BM25 and stopwords.
 - **Loading:** `BatchCreate` loads articles from an ION file and from an inline list, and snippets with their own vectors (`vectorKey`, `targetVector`). One article is rejected on purpose; with `failOnError: false` it is reported in `errors` and the task still succeeds.
 - **Searching:** `Query` runs each search type:
   - `BM25` with boosted `queryProperties`;
   - `HYBRID` with `alpha` and a simple `filter`;
   - `NEAR_TEXT` with `certainty` and structured `filters` combined with `OR`;
-  - `FETCH_OBJECTS` with a range filter: two conditions on `wordCount`, combined with `AND`;
+  - `FETCH_OBJECTS` with every other filter:
+    - a range on `wordCount`;
+    - `CONTAINS_ALL` and `CONTAINS_NONE` on tags;
+    - `WITHIN_GEO_RANGE` on the author's office;
+    - `IS_NULL` on the publication date;
+    - `len(title)`;
+    - `_lastUpdateTimeUnix`;
+    - a nested group with `EQUAL`, `NOT_EQUAL`, `or` and `not`.
   - `NEAR_VECTOR`, once with the vector of an article fetched with `includeVector`, once with a hand-written vector.
 
   It also uses each `fetchType`: `FETCH`, `FETCH_ONE`, `STORE` and `NONE`.
@@ -78,30 +120,52 @@ tasks:
     vectorizer: TEXT2VEC_COHERE
     vectorizerModel: embed-v4.0
     vectorName: content
+    vectorizeProperties: [title, body]  # labels such as category and tags stay out of the vector
     skipIfExists: true
+    # Collection-wide indexes that some filters need, and keyword-search tuning.
+    invertedIndex:
+      indexTimestamps: true       # filter on _creationTimeUnix / _lastUpdateTimeUnix (`updated_this_run`)
+      indexNullState: true        # IS_NULL (`unpublished`)
+      indexPropertyLength: true   # len(property) (`short_titles`)
+      bm25:
+        b: 0.75                   # length normalization (Weaviate's default)
+        k1: 1.2                   # term frequency saturation (Weaviate's default)
+      stopwords:
+        preset: en
+        additions: [kestra]       # ignored by keyword search
+        removals: [not]           # kept, so "not" can be searched for
+      cleanupIntervalSeconds: 60
     # A bare type keeps Weaviate's defaults: searchable, filterable and vectorized.
     # A map states how the property is used, so Weaviate only builds the indexes it needs.
     fields:
-      title: text
+      title:
+        type: text
+        tokenization: word        # the default: lowercase words, punctuation removed
+        textAnalyzer:
+          foldAscii: true         # "café" also matches "cafe"
       body:
         type: text
         description: Full article text
         indexFilterable: false    # searched (BM25 and vectors), never filtered on
       category:
         type: text
+        tokenization: field       # the whole value is one token: exact labels
         indexSearchable: false    # filtered on, never keyword-searched
-        skipVectorization: true   # a label, so keep it out of the vector
-      tags: text[]
+      tags:
+        type: text[]
+        tokenization: field       # "disaster-recovery" stays one tag instead of two words
       wordCount:
         type: int
         indexRangeFilters: true   # speeds up the range filter in `mid_length`
       rating:
         type: number
-        indexFilterable: false    # only displayed, never filtered on
+        indexFilterable: false    # never compared for equality...
+        indexRangeFilters: true   # ...only with >, <, >= and <= (`curated`)
       published: boolean
       publishedAt:
         type: date
         indexRangeFilters: true   # speeds up the date filter in `near_text`
+      office: geoCoordinates      # where the author works (`near_berlin`)
 
   # Collection for vectors you compute yourself.
   - id: create_snippets
@@ -118,8 +182,8 @@ tasks:
     type: io.kestra.plugin.core.storage.Write
     extension: .ion
     content: |
-      {id:"2f1c9a52-6a0e-4c43-9d63-1b6f1d0a0001",title:"Backups that actually restore",body:"Test your restore process regularly and keep copies in another region.",category:"operations",tags:["backup","disaster-recovery"],wordCount:900,rating:4.8,published:true,publishedAt:2024-02-01T00:00:00Z}
-      {id:"2f1c9a52-6a0e-4c43-9d63-1b6f1d0a0002",title:"Encrypting data at rest",body:"Turn on disk encryption and rotate keys to protect stored data.",category:"security",tags:["encryption","compliance"],wordCount:1200,rating:4.6,published:true,publishedAt:2024-05-15T09:30:00Z}
+      {id:"2f1c9a52-6a0e-4c43-9d63-1b6f1d0a0001",title:"Backups that actually restore",body:"Test your restore process regularly and keep copies in another region.",category:"operations",tags:["backup","disaster-recovery"],wordCount:900,rating:4.8,published:true,publishedAt:2024-02-01T00:00:00Z,office:{latitude:52.52,longitude:13.40}}
+      {id:"2f1c9a52-6a0e-4c43-9d63-1b6f1d0a0002",title:"Encrypting data at rest",body:"Turn on disk encryption and rotate keys to protect stored data.",category:"security",tags:["encryption","compliance"],wordCount:1200,rating:4.6,published:true,publishedAt:2024-05-15T09:30:00Z,office:{latitude:48.86,longitude:2.35}}
 
   - id: load_file
     type: io.kestra.plugin.weaviate.BatchCreate
@@ -143,6 +207,7 @@ tasks:
         rating: 4.1
         published: true
         publishedAt: "2023-11-20T00:00:00Z"
+        office: {latitude: 40.71, longitude: -74.01}
       - id: 2f1c9a52-6a0e-4c43-9d63-1b6f1d0a0004
         title: Least-privilege API keys
         body: Give each service its own key with only the permissions it needs.
@@ -152,13 +217,15 @@ tasks:
         rating: 4.9
         published: true
         publishedAt: "2024-08-02T00:00:00Z"
+        office: {latitude: -23.55, longitude: -46.63}
       - id: 2f1c9a52-6a0e-4c43-9d63-1b6f1d0a0005
         title: Draft notes on audit logging
         body: Record who changed what, and keep the logs where attackers cannot edit them.
         category: security
         tags: [audit, compliance]
         wordCount: 300
-        published: false
+        published: false          # no publishedAt: found by IS_NULL in `unpublished`
+        office: {latitude: 35.68, longitude: 139.69}
       # Rejected on purpose: wordCount must be an int. With failOnError: false it is reported in `errors`.
       - id: 2f1c9a52-6a0e-4c43-9d63-1b6f1d0a0006
         title: Broken object
@@ -287,6 +354,99 @@ tasks:
     returnProperties: [title, wordCount, rating]
     fetchType: FETCH
 
+  # Articles tagged with both values.
+  - id: tagged_all
+    type: io.kestra.plugin.weaviate.Query
+    className: Article
+    filters:
+      - property: tags
+        operator: CONTAINS_ALL
+        value: [encryption, compliance]
+    returnProperties: [title]
+    fetchType: FETCH
+
+  # Articles with none of the tags.
+  - id: tagged_none
+    type: io.kestra.plugin.weaviate.Query
+    className: Article
+    filters:
+      - property: tags
+        operator: CONTAINS_NONE
+        value: [compliance]
+    returnProperties: [title]
+    fetchType: FETCH
+
+  # Authors working within 1000 km of Berlin: Berlin and Paris, not New York, São Paulo or Tokyo.
+  - id: near_berlin
+    type: io.kestra.plugin.weaviate.Query
+    className: Article
+    filters:
+      - property: office
+        operator: WITHIN_GEO_RANGE
+        value:
+          latitude: 52.52
+          longitude: 13.40
+          distance: 1000000         # meters
+    returnProperties: [title, office]
+    fetchType: FETCH
+
+  # Articles without a publication date (needs indexNullState).
+  - id: unpublished
+    type: io.kestra.plugin.weaviate.Query
+    className: Article
+    filters:
+      - property: publishedAt
+        operator: IS_NULL
+        value: true
+    returnProperties: [title]
+    fetchType: FETCH
+
+  # Titles shorter than 25 characters (needs indexPropertyLength).
+  - id: short_titles
+    type: io.kestra.plugin.weaviate.Query
+    className: Article
+    filters:
+      - property: len(title)
+        operator: LESS_THAN
+        value: 25
+    returnProperties: [title]
+    fetchType: FETCH
+
+  # Objects written by this execution (needs indexTimestamps).
+  - id: updated_this_run
+    type: io.kestra.plugin.weaviate.Query
+    className: Article
+    filters:
+      - property: _lastUpdateTimeUnix
+        operator: GREATER_THAN_EQUAL
+        value: "{{ execution.startDate }}"
+        valueType: DATE
+    limit: 100
+    returnMetadata: [LAST_UPDATE_TIME]
+    fetchType: FETCH
+
+  # Groups nest: published, not in operations, and either highly rated or not about encryption.
+  - id: curated
+    type: io.kestra.plugin.weaviate.Query
+    className: Article
+    filters:
+      - property: published
+        operator: EQUAL
+        value: true
+      - property: category
+        operator: NOT_EQUAL
+        value: operations
+      - or:
+          - property: rating
+            operator: GREATER_THAN
+            value: 4.7
+          - not:
+              property: tags
+              operator: CONTAINS_ANY
+              value: [encryption]
+    returnProperties: [title, rating]
+    fetchType: FETCH
+
   # Runs the search without returning rows, e.g. to check the collection is reachable.
   # The row count is reported in the task's `records` metric.
   - id: check
@@ -324,6 +484,13 @@ tasks:
       {%- for row in outputs.mid_length.rows %}
         {{ row.properties.wordCount }} words, rated {{ row.properties.rating }}: {{ row.properties.title }}
       {%- endfor %}
+      Tagged encryption AND compliance: {{ outputs.tagged_all.rows | jq('[.[].properties.title]') | first }}
+      Not tagged compliance: {{ outputs.tagged_none.rows | jq('[.[].properties.title]') | first }}
+      Authors within 1000 km of Berlin: {{ outputs.near_berlin.rows | jq('[.[].properties.title]') | first }}
+      Unpublished: {{ outputs.unpublished.rows | jq('[.[].properties.title]') | first }}
+      Titles under 25 characters: {{ outputs.short_titles.rows | jq('[.[].properties.title]') | first }}
+      Written by this run: {{ outputs.updated_this_run.size }} articles
+      Curated: {{ outputs.curated.rows | jq('[.[].properties.title]') | first }}
 
   - id: delete_one
     type: io.kestra.plugin.weaviate.Delete

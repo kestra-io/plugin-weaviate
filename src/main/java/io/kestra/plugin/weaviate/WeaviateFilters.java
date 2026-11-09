@@ -7,6 +7,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.regex.Pattern;
 
 import io.weaviate.client6.v1.api.collections.query.Filter;
 import io.weaviate.client6.v1.api.collections.query.FilterOperand;
@@ -15,6 +16,7 @@ final class WeaviateFilters {
     static final String ID_PROPERTY = "_id";
     static final String CREATION_TIME_PROPERTY = "_creationTimeUnix";
     static final String LAST_UPDATE_TIME_PROPERTY = "_lastUpdateTimeUnix";
+    private static final Pattern PROPERTY_LENGTH = Pattern.compile("len\\((\\w+)\\)");
 
     private WeaviateFilters() {
     }
@@ -69,11 +71,35 @@ final class WeaviateFilters {
     }
 
     static Filter condition(FilterCondition condition) {
+        if (condition == null) {
+            throw new IllegalArgumentException("condition is empty.");
+        }
+        var comparison = condition.getProperty() != null || condition.getOperator() != null || condition.getValue() != null || condition.getValueType() != null;
+        var forms = (comparison ? 1 : 0) + (condition.getAnd() != null ? 1 : 0) + (condition.getOr() != null ? 1 : 0) + (condition.getNot() != null ? 1 : 0);
+        if (forms != 1) {
+            throw new IllegalArgumentException("set either `property` and `operator`, or exactly one of `and`, `or` and `not`.");
+        }
+        if (condition.getAnd() != null) {
+            return Filter.and(toOperands(group("and", condition.getAnd())));
+        }
+        if (condition.getOr() != null) {
+            return Filter.or(toOperands(group("or", condition.getOr())));
+        }
+        if (condition.getNot() != null) {
+            try {
+                return Filter.not(condition(condition.getNot()));
+            } catch (IllegalArgumentException e) {
+                throw new IllegalArgumentException("in `not`: " + e.getMessage(), e);
+            }
+        }
         if (condition.getProperty() == null || condition.getProperty().isBlank()) {
             throw new IllegalArgumentException("`property` is required.");
         }
         if (condition.getOperator() == null) {
             throw new IllegalArgumentException("`operator` is required.");
+        }
+        if (condition.getOperator() == FilterCondition.Operator.WITHIN_GEO_RANGE) {
+            return geoRange(condition.getProperty(), condition.getValue());
         }
         var value = condition.getOperator() == FilterCondition.Operator.IS_NULL
             ? condition.getValue()
@@ -84,7 +110,49 @@ final class WeaviateFilters {
         return condition(condition.getProperty(), condition.getOperator(), value);
     }
 
+    private static List<Filter> group(String name, List<FilterCondition> conditions) {
+        if (conditions.isEmpty()) {
+            throw new IllegalArgumentException("`" + name + "` needs at least one condition.");
+        }
+        List<Filter> filters = new ArrayList<>();
+        for (int i = 0; i < conditions.size(); i++) {
+            try {
+                filters.add(condition(conditions.get(i)));
+            } catch (IllegalArgumentException e) {
+                throw new IllegalArgumentException("in `" + name + "[" + i + "]`: " + e.getMessage(), e);
+            }
+        }
+        return filters;
+    }
+
+    private static Filter geoRange(String property, Object value) {
+        if (!(value instanceof Map<?, ?> map)) {
+            throw new IllegalArgumentException("WITHIN_GEO_RANGE on '" + property + "' needs a map with `latitude`, `longitude` and `distance`, got " + describe(value) + ".");
+        }
+        return Filter.property(property).withinGeoRange(
+            geoNumber(property, map, "latitude"),
+            geoNumber(property, map, "longitude"),
+            geoNumber(property, map, "distance")
+        );
+    }
+
+    private static float geoNumber(String property, Map<?, ?> map, String key) {
+        var value = map.get(key);
+        if (value instanceof Number number) {
+            return number.floatValue();
+        }
+        try {
+            return Float.parseFloat(String.valueOf(value));
+        } catch (NumberFormatException e) {
+            throw new IllegalArgumentException("WITHIN_GEO_RANGE on '" + property + "' needs a number for `" + key + "`, got " + describe(value) + ".");
+        }
+    }
+
     private static Filter condition(String property, FilterCondition.Operator operator, Object value) {
+        var length = PROPERTY_LENGTH.matcher(property);
+        if (length.matches()) {
+            return propertyCondition(Filter.propertyLen(length.group(1)), property, operator, value);
+        }
         return switch (property) {
             case ID_PROPERTY -> idCondition(operator, value);
             case CREATION_TIME_PROPERTY, LAST_UPDATE_TIME_PROPERTY -> timestampCondition(property, operator, value);
@@ -108,6 +176,7 @@ final class WeaviateFilters {
             }
             case CONTAINS_ANY, CONTAINS_ALL, CONTAINS_NONE -> contains(builder, property, operator, asList(value));
             case IS_NULL -> builder.isNull(isNullValue(property, value));
+            case WITHIN_GEO_RANGE -> throw new IllegalArgumentException("WITHIN_GEO_RANGE needs a structured condition in `filters`.");
         };
     }
 
