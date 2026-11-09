@@ -30,7 +30,7 @@ Pass extra headers with `headers`, for example vectorizer API keys such as `X-Op
 - `bm25` (`b`, `k1`) and `stopwords` (`preset`, `additions`, `removals`), which tune keyword search;
 - `cleanupIntervalSeconds`.
 
-`quantization` compresses the vectors, and `multiTenancy` isolates data per tenant; both are described below. Instead of these options, `definition` can take the whole collection as JSON; see below. Set `skipIfExists: true` to make the task idempotent; an existing collection keeps its schema.
+`quantization` compresses the vectors, and `multiTenancy` isolates data per tenant; both are described below. Instead of these options, `definition` can take the whole collection as JSON, which you can generate with the [Weaviate collection builder](https://weaviate.github.io/weaviate-add-collection/); see [Collections from JSON](#collections-from-json). Set `skipIfExists: true` to make the task idempotent; an existing collection keeps its schema.
 
 `BatchCreate` inserts objects; `mode` sets how they are sent, as described below. Set `objects` to a `kestra://` URI of an ION file or an inline list of maps. Use `uuidKey` and `vectorKey` to take object IDs and precomputed vectors from the input. The task fails if Weaviate rejects any object, unless `failOnError` is false; rejected objects are then listed in the `errors` output.
 
