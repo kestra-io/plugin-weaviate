@@ -32,6 +32,7 @@ public abstract class WeaviateConnection extends Task implements WeaviateConnect
 
     private String url;
 
+    @ToString.Exclude
     private Property<String> apiKey;
 
     private Property<String> grpcHost;
@@ -40,31 +41,31 @@ public abstract class WeaviateConnection extends Task implements WeaviateConnect
 
     private Property<Duration> requestTimeout;
 
+    // Headers often carry vectorizer API keys.
+    @ToString.Exclude
     private Property<Map<String, String>> headers;
 
-    /**
-     * Opens a client for this task's connection settings. The client holds a gRPC channel, so callers must close it.
-     */
+    // The client holds a gRPC channel, so callers must close it.
     protected WeaviateClient connect(RunContext runContext) throws IllegalVariableEvaluationException {
-        Endpoint endpoint = Endpoint.parse(
+        var endpoint = Endpoint.parse(
             runContext.render(url),
             runContext.render(grpcHost).as(String.class).orElse(null),
             runContext.render(grpcPort).as(Integer.class).orElse(null)
         );
-        String renderedApiKey = runContext.render(apiKey).as(String.class).orElse(null);
-        Map<String, String> renderedHeaders = buildHeaders(runContext.render(headers).asMap(String.class, String.class));
-        Integer timeoutSeconds = runContext.render(requestTimeout).as(Duration.class)
+        var rApiKey = runContext.render(apiKey).as(String.class).orElse(null);
+        var rHeaders = buildHeaders(runContext.render(headers).asMap(String.class, String.class));
+        var timeoutSeconds = runContext.render(requestTimeout).as(Duration.class)
             .map(d -> (int) Math.max(1, d.toSeconds()))
             .orElse(null);
 
         try {
             if (endpoint.cloud()) {
-                if (renderedApiKey == null) {
+                if (rApiKey == null) {
                     throw new IllegalArgumentException("An `apiKey` is required to connect to Weaviate Cloud (" + endpoint.httpHost() + ").");
                 }
-                return WeaviateClient.connectToWeaviateCloud(endpoint.httpHost(), renderedApiKey, c ->
+                return WeaviateClient.connectToWeaviateCloud(endpoint.httpHost(), rApiKey, c ->
                 {
-                    c.setHeaders(renderedHeaders);
+                    c.setHeaders(rHeaders);
                     if (timeoutSeconds != null) {
                         c.timeout(timeoutSeconds);
                     }
@@ -80,9 +81,9 @@ public abstract class WeaviateConnection extends Task implements WeaviateConnect
                     .httpPort(endpoint.httpPort())
                     .grpcHost(endpoint.grpcHost())
                     .grpcPort(endpoint.grpcPort())
-                    .setHeaders(renderedHeaders);
-                if (renderedApiKey != null) {
-                    c.authentication(Authentication.apiKey(renderedApiKey));
+                    .setHeaders(rHeaders);
+                if (rApiKey != null) {
+                    c.authentication(Authentication.apiKey(rApiKey));
                 }
                 if (timeoutSeconds != null) {
                     c.timeout(timeoutSeconds);
@@ -98,10 +99,7 @@ public abstract class WeaviateConnection extends Task implements WeaviateConnect
         }
     }
 
-    /**
-     * Returns the headers sent with every request: the integration header that lets Weaviate
-     * attribute traffic to this plugin, then the user's headers, which take precedence.
-     */
+    // User headers override the integration header, matched case-insensitively.
     static Map<String, String> buildHeaders(Map<String, String> userHeaders) {
         Map<String, String> result = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
         result.put(INTEGRATION_HEADER, INTEGRATION_VALUE);
@@ -116,27 +114,23 @@ public abstract class WeaviateConnection extends Task implements WeaviateConnect
             if (is == null) {
                 return "unknown";
             }
-            Properties properties = new Properties();
+            var properties = new Properties();
             properties.load(is);
-            String version = properties.getProperty("version");
+            var version = properties.getProperty("version");
             return version == null || version.startsWith("${") ? "unknown" : version;
         } catch (IOException e) {
             return "unknown";
         }
     }
 
-    /**
-     * HTTP and gRPC coordinates resolved from the task's `url`, `grpcHost` and `grpcPort`.
-     *
-     * @param cloud whether the URL points at Weaviate Cloud, which derives its own gRPC endpoint
-     */
+    // `cloud`: Weaviate Cloud derives its own gRPC endpoint from the HTTP host.
     record Endpoint(String scheme, String httpHost, int httpPort, String grpcHost, int grpcPort, boolean cloud) {
         static Endpoint parse(String url, String grpcHost, Integer grpcPort) {
             if (url == null || url.isBlank()) {
                 throw new IllegalArgumentException("`url` is required.");
             }
-            URI uri = URI.create(url.contains("://") ? url.trim() : "https://" + url.trim());
-            String scheme = uri.getScheme().toLowerCase(Locale.ROOT);
+            var uri = URI.create(url.contains("://") ? url.trim() : "https://" + url.trim());
+            var scheme = uri.getScheme().toLowerCase(Locale.ROOT);
             if (!scheme.equals("http") && !scheme.equals("https")) {
                 throw new IllegalArgumentException("Unsupported scheme in `url`: " + scheme + ". Use http or https.");
             }
@@ -147,7 +141,10 @@ public abstract class WeaviateConnection extends Task implements WeaviateConnect
                 throw new IllegalArgumentException("Weaviate `url` must not contain a path, got: " + uri.getPath());
             }
 
-            String host = uri.getHost();
+            var host = uri.getHost();
+            if (grpcPort != null && (grpcPort < 1 || grpcPort > 65535)) {
+                throw new IllegalArgumentException("`grpcPort` must be between 1 and 65535, got " + grpcPort + ".");
+            }
             int httpPort = uri.getPort() != -1 ? uri.getPort() : scheme.equals("https") ? 443 : 80;
             boolean cloud = grpcHost == null && grpcPort == null && isWeaviateCloud(host);
 
@@ -162,7 +159,7 @@ public abstract class WeaviateConnection extends Task implements WeaviateConnect
         }
 
         private static boolean isWeaviateCloud(String host) {
-            String lower = host.toLowerCase(Locale.ROOT);
+            var lower = host.toLowerCase(Locale.ROOT);
             return lower.endsWith(".weaviate.cloud") || lower.endsWith(".weaviate.network");
         }
     }

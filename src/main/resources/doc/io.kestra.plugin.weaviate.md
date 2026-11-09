@@ -31,7 +31,7 @@ Pass extra headers with `headers`, for example vectorizer API keys such as `X-Op
 
 Each result row is `{uuid, properties, metadata, vector?, vectors?}`. Request metadata such as `DISTANCE` or `SCORE` with `returnMetadata`, and vectors with `includeVector`. Control result handling with `fetchType` (default `STORE`).
 
-`Delete` removes objects from a collection: set `objectId` to delete one object, or filters to delete every match. Deleting all objects requires `deleteAll: true`.
+`Delete` removes objects from a collection: set `objectId` to delete one object, or filters to delete every match. Deleting all objects requires `deleteAll: true`. The task fails if Weaviate rejects any deletion, unless `failOnError` is false.
 
 ## Filters
 
@@ -47,6 +47,6 @@ Plugin versions built on the Weaviate Java client v6 replace the GraphQL-based `
 - `Query.query` is now search text, not a GraphQL string. Use `searchType`, `limit`, `returnProperties` and `filters` instead of a `Get { ... }` query.
 - Query rows changed from `{ClassName: {...}}` to `{uuid, properties, metadata}`: `row.ClassName.title` becomes `row.properties.title`, and `_additional.id` becomes `uuid`.
 - `BatchCreate` now returns `insertedCount`, `failedCount` and `errors`, and fails on rejected objects by default.
-- `Delete` with neither `objectId` nor filters now requires `deleteAll: true`.
+- `Delete` with neither `objectId` nor filters now requires `deleteAll: true`, and fails on rejected deletions by default (`failOnError`).
 - `SchemaCreate` takes one data type per field; the legacy `string` type is created as `text`. It defaults to `vectorizer: NONE` instead of the server's default vectorizer, so set `vectorizer` if you relied on it.
 - Aggregations, `groupBy`, generative search and `Explore` are not supported. Stay on a plugin version built on the v5 client, or call the Weaviate REST API with `io.kestra.plugin.core.http.Request`.

@@ -14,7 +14,6 @@ import io.kestra.core.runners.RunContext;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.weaviate.client6.v1.api.WeaviateClient;
-import io.weaviate.client6.v1.api.collections.CollectionHandle;
 import io.weaviate.client6.v1.api.collections.data.DeleteManyResponse;
 import io.weaviate.client6.v1.api.collections.query.Filter;
 import jakarta.validation.constraints.NotNull;
@@ -28,8 +27,9 @@ import lombok.experimental.SuperBuilder;
 @NoArgsConstructor
 @Schema(
     title = "Delete objects from a Weaviate collection",
-    description = "Deletes a single object by ID, or every object matching `filter` and/or `filters`. " +
-        "Deleting a whole collection's objects requires `deleteAll: true`, so an empty filter can never wipe a collection by accident."
+    description = """
+        Deletes a single object by ID, or every object matching `filter` and/or `filters`.
+        Deleting a whole collection's objects requires `deleteAll: true`, so an empty filter can never wipe a collection by accident."""
 )
 @Plugin(
     examples = {
@@ -118,39 +118,50 @@ public class Delete extends WeaviateConnection implements RunnableTask<Delete.Ou
     @PluginProperty(group = "processing")
     private Property<Boolean> deleteAll = Property.ofValue(false);
 
+    @Schema(
+        title = "Fail when Weaviate rejects a deletion",
+        description = """
+            When false, the task succeeds and reports rejected deletions through `success: false` and a warning.
+            Deleting an `objectId` that does not exist is not a rejection: the task succeeds with `deletedCount: 0`."""
+    )
+    @Builder.Default
+    @PluginProperty(group = "advanced")
+    private Property<Boolean> failOnError = Property.ofValue(true);
+
     @Schema(title = "Tenant", description = "Tenant to delete from, for multi-tenant collections.")
     @PluginProperty(group = "advanced")
     private Property<String> tenant;
 
     @Override
     public Delete.Output run(RunContext runContext) throws Exception {
-        String renderedClassName = runContext.render(className).as(String.class).orElseThrow();
-        String renderedObjectId = runContext.render(objectId).as(String.class).filter(s -> !s.isBlank()).orElse(null);
-        boolean renderedDeleteAll = runContext.render(deleteAll).as(Boolean.class).orElse(false);
-        String renderedTenant = runContext.render(tenant).as(String.class).orElse(null);
-        Filter renderedFilter = WeaviateFilters.build(
+        var rClassName = runContext.render(className).as(String.class).orElseThrow(() -> new IllegalArgumentException("`className` is required."));
+        var rObjectId = runContext.render(objectId).as(String.class).filter(s -> !s.isBlank()).orElse(null);
+        boolean rDeleteAll = runContext.render(deleteAll).as(Boolean.class).orElse(false);
+        boolean rFailOnError = runContext.render(failOnError).as(Boolean.class).orElse(true);
+        var rTenant = runContext.render(tenant).as(String.class).orElse(null);
+        var rFilter = WeaviateFilters.build(
             runContext.render(filter).asMap(String.class, Object.class),
             runContext.render(filters).asList(FilterCondition.class),
             runContext.render(filtersOperator).as(FilterCondition.LogicalOperator.class).orElse(FilterCondition.LogicalOperator.AND)
         );
 
-        Filter deleteFilter = resolveFilter(renderedObjectId, renderedFilter, renderedDeleteAll);
+        var deleteFilter = resolveFilter(rObjectId, rFilter, rDeleteAll);
 
         try (WeaviateClient client = connect(runContext)) {
-            CollectionHandle<Map<String, Object>> collection = client.collections.use(renderedClassName);
-            if (renderedTenant != null) {
-                collection = collection.withTenant(renderedTenant);
+            var collection = client.collections.use(rClassName);
+            if (rTenant != null) {
+                collection = collection.withTenant(rTenant);
             }
 
-            if (renderedObjectId != null) {
+            if (rObjectId != null) {
                 // The server answers 204 whether or not the object existed, so check first to report an accurate count.
-                boolean deleted = collection.data.exists(renderedObjectId) && collection.data.deleteById(renderedObjectId);
+                boolean deleted = collection.data.exists(rObjectId) && collection.data.deleteById(rObjectId);
                 runContext.metric(Counter.of("deleted", deleted ? 1 : 0));
                 return Output.builder()
-                    .className(renderedClassName)
+                    .className(rClassName)
                     .success(deleted)
                     .deletedCount(deleted ? 1 : 0)
-                    .ids(deleted ? List.of(renderedObjectId) : List.of())
+                    .ids(deleted ? List.of(rObjectId) : List.of())
                     .idsTruncated(false)
                     .build();
             }
@@ -161,7 +172,7 @@ public class Delete extends WeaviateConnection implements RunnableTask<Delete.Ou
             List<String> ids = new ArrayList<>();
             boolean truncated = false;
             for (int round = 0; round < MAX_DELETE_ROUNDS; round++) {
-                DeleteManyResponse response = collection.data.deleteMany(deleteFilter, o -> o.verbose(true));
+                var response = collection.data.deleteMany(deleteFilter, o -> o.verbose(true));
                 deleted += response.successful();
                 failed += response.failed();
                 if (response.objects() != null) {
@@ -181,10 +192,19 @@ public class Delete extends WeaviateConnection implements RunnableTask<Delete.Ou
             }
 
             runContext.metric(Counter.of("deleted", deleted));
-            runContext.logger().info("Deleted {} objects from '{}' ({} failed)", deleted, renderedClassName, failed);
+            if (failed > 0) {
+                if (rFailOnError) {
+                    throw new IllegalStateException(
+                        "Weaviate rejected " + failed + " deletions from '" + rClassName + "' (" + deleted + " deleted). Set `failOnError: false` to continue anyway."
+                    );
+                }
+                runContext.logger().warn("Deleted {} objects from '{}', {} deletions were rejected", deleted, rClassName, failed);
+            } else {
+                runContext.logger().info("Deleted {} objects from '{}'", deleted, rClassName);
+            }
 
             return Output.builder()
-                .className(renderedClassName)
+                .className(rClassName)
                 .success(failed == 0)
                 .deletedCount(deleted)
                 .ids(ids)
@@ -193,9 +213,6 @@ public class Delete extends WeaviateConnection implements RunnableTask<Delete.Ou
         }
     }
 
-    /**
-     * Returns the filter to delete by, or null when deleting by ID. Fails on ambiguous or unsafe combinations.
-     */
     static Filter resolveFilter(String objectId, Filter filter, boolean deleteAll) {
         if (objectId != null) {
             if (filter != null || deleteAll) {

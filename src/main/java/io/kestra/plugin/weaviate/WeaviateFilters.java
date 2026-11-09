@@ -3,9 +3,7 @@ package io.kestra.plugin.weaviate;
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.time.*;
-import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
-import java.util.Date;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -13,9 +11,6 @@ import java.util.UUID;
 import io.weaviate.client6.v1.api.collections.query.Filter;
 import io.weaviate.client6.v1.api.collections.query.FilterOperand;
 
-/**
- * Translates the task-level `filter` map and `filters` list into a Weaviate v6 {@link Filter}.
- */
 final class WeaviateFilters {
     static final String ID_PROPERTY = "_id";
     static final String CREATION_TIME_PROPERTY = "_creationTimeUnix";
@@ -24,18 +19,11 @@ final class WeaviateFilters {
     private WeaviateFilters() {
     }
 
-    /**
-     * Builds the combined filter, or returns null when neither form yields a condition.
-     *
-     * @param simple legacy map: entries are ANDed; strings use LIKE (so `*` wildcards work), other values use EQUAL
-     * @param conditions structured conditions, combined with {@code operator}
-     * @param operator how to combine {@code conditions}; defaults to AND
-     */
     static Filter build(Map<String, Object> simple, List<FilterCondition> conditions, FilterCondition.LogicalOperator operator) {
         List<Filter> parts = new ArrayList<>();
 
         if (simple != null && !simple.isEmpty()) {
-            List<Filter> simpleFilters = simple.entrySet().stream()
+            var simpleFilters = simple.entrySet().stream()
                 .map(e -> simpleCondition(e.getKey(), e.getValue()))
                 .toList();
             parts.add(simpleFilters.size() == 1 ? simpleFilters.getFirst() : Filter.and(toOperands(simpleFilters)));
@@ -72,8 +60,8 @@ final class WeaviateFilters {
             throw new IllegalArgumentException("Invalid `filter` entry '" + property + "': value is null.");
         }
         try {
-            Object normalized = normalize(value, null);
-            FilterCondition.Operator operator = normalized instanceof String ? FilterCondition.Operator.LIKE : FilterCondition.Operator.EQUAL;
+            var normalized = normalize(value, null);
+            var operator = normalized instanceof String ? FilterCondition.Operator.LIKE : FilterCondition.Operator.EQUAL;
             return condition(property, operator, normalized);
         } catch (IllegalArgumentException e) {
             throw new IllegalArgumentException("Invalid `filter` entry '" + property + "': " + e.getMessage(), e);
@@ -87,7 +75,7 @@ final class WeaviateFilters {
         if (condition.getOperator() == null) {
             throw new IllegalArgumentException("`operator` is required.");
         }
-        Object value = condition.getOperator() == FilterCondition.Operator.IS_NULL
+        var value = condition.getOperator() == FilterCondition.Operator.IS_NULL
             ? condition.getValue()
             : normalize(condition.getValue(), condition.getValueType());
         if (value == null && condition.getOperator() != FilterCondition.Operator.IS_NULL) {
@@ -131,9 +119,9 @@ final class WeaviateFilters {
     }
 
     private static Filter contains(Filter.FilterBuilder builder, String property, FilterCondition.Operator operator, List<?> values) {
-        Object first = values.getFirst();
+        var first = values.getFirst();
         if (first instanceof String) {
-            List<String> strings = castAll(values, String.class, property);
+            var strings = castAll(values, String.class, property);
             return switch (operator) {
                 case CONTAINS_ANY -> builder.containsAny(strings);
                 case CONTAINS_ALL -> builder.containsAll(strings);
@@ -141,7 +129,7 @@ final class WeaviateFilters {
             };
         }
         if (first instanceof Boolean) {
-            Boolean[] array = castAll(values, Boolean.class, property).toArray(Boolean[]::new);
+            var array = castAll(values, Boolean.class, property).toArray(Boolean[]::new);
             return switch (operator) {
                 case CONTAINS_ANY -> builder.containsAny(array);
                 case CONTAINS_ALL -> builder.containsAll(array);
@@ -149,7 +137,7 @@ final class WeaviateFilters {
             };
         }
         if (first instanceof Long) {
-            Long[] array = castAll(values, Long.class, property).toArray(Long[]::new);
+            var array = castAll(values, Long.class, property).toArray(Long[]::new);
             return switch (operator) {
                 case CONTAINS_ANY -> builder.containsAny(array);
                 case CONTAINS_ALL -> builder.containsAll(array);
@@ -157,14 +145,14 @@ final class WeaviateFilters {
             };
         }
         if (first instanceof Double) {
-            Double[] array = castAll(values, Double.class, property).toArray(Double[]::new);
+            var array = castAll(values, Double.class, property).toArray(Double[]::new);
             return switch (operator) {
                 case CONTAINS_ANY -> builder.containsAny(array);
                 case CONTAINS_ALL -> builder.containsAll(array);
                 default -> builder.containsNone(array);
             };
         }
-        OffsetDateTime[] array = castAll(values, OffsetDateTime.class, property).toArray(OffsetDateTime[]::new);
+        var array = castAll(values, OffsetDateTime.class, property).toArray(OffsetDateTime[]::new);
         return switch (operator) {
             case CONTAINS_ANY -> builder.containsAny(array);
             case CONTAINS_ALL -> builder.containsAll(array);
@@ -175,7 +163,7 @@ final class WeaviateFilters {
     private static Filter idCondition(FilterCondition.Operator operator, Object value) {
         var id = Filter.uuid();
         if (operator == FilterCondition.Operator.CONTAINS_ANY || operator == FilterCondition.Operator.CONTAINS_NONE) {
-            String[] ids = castAll(asList(value), String.class, ID_PROPERTY).toArray(String[]::new);
+            var ids = castAll(asList(value), String.class, ID_PROPERTY).toArray(String[]::new);
             return operator == FilterCondition.Operator.CONTAINS_ANY ? id.containsAny(ids) : id.containsNone(ids);
         }
         if (!(value instanceof String str)) {
@@ -192,9 +180,7 @@ final class WeaviateFilters {
         };
     }
 
-    /**
-     * Object timestamps only support comparisons; values are converted to dates first so non-date input fails early.
-     */
+    // Object timestamps only support comparisons; converting to dates first makes non-date input fail early.
     private static Filter timestampCondition(String property, FilterCondition.Operator operator, Object value) {
         return switch (operator) {
             case EQUAL, NOT_EQUAL, GREATER_THAN, GREATER_THAN_EQUAL, LESS_THAN, LESS_THAN_EQUAL ->
@@ -206,14 +192,10 @@ final class WeaviateFilters {
         };
     }
 
-    /**
-     * Formats dates as RFC3339 text before they reach the client. The v6 client serializes OffsetDateTime with
-     * toString(), which drops zero seconds (2024-01-01T00:00Z) and is rejected by the server. Date filters are
-     * sent as text values either way, so this changes only the formatting.
-     */
+    // Date filters are sent as text either way; formatting here only avoids the client's zero-seconds bug.
     private static Object wire(Object value) {
         if (value instanceof OffsetDateTime date) {
-            return date.format(DateTimeFormatter.ISO_OFFSET_DATE_TIME);
+            return WeaviateDates.rfc3339(date);
         }
         if (value instanceof List<?> list && !list.isEmpty() && list.getFirst() instanceof OffsetDateTime) {
             return list.stream().map(WeaviateFilters::wire).toList();
@@ -234,10 +216,6 @@ final class WeaviateFilters {
         throw new IllegalArgumentException("IS_NULL on '" + property + "' needs a boolean value, got " + describe(value) + ".");
     }
 
-    /**
-     * Converts a rendered YAML value into one of the types the v6 filter builder accepts:
-     * String, Boolean, Long, Double, OffsetDateTime, or a homogeneous List of those.
-     */
     static Object normalize(Object value, FilterCondition.ValueType type) {
         if (value == null) {
             return null;
@@ -246,12 +224,12 @@ final class WeaviateFilters {
             if (list.isEmpty()) {
                 throw new IllegalArgumentException("list values must not be empty.");
             }
-            List<Object> normalized = list.stream().map(v -> normalize(v, type)).toList();
+            var normalized = list.stream().map(v -> normalize(v, type)).toList();
             // YAML writes [1, 2.5] as Integer and Double; treat such a list as numbers rather than rejecting it.
             if (normalized.stream().allMatch(v -> v instanceof Long || v instanceof Double) && normalized.stream().anyMatch(v -> v instanceof Double)) {
                 normalized = normalized.stream().<Object> map(v -> ((Number) v).doubleValue()).toList();
             }
-            Class<?> first = normalized.getFirst().getClass();
+            var first = normalized.getFirst().getClass();
             if (normalized.stream().anyMatch(v -> v.getClass() != first)) {
                 throw new IllegalArgumentException("list values must all have the same type, got " + describe(value) + ".");
             }
@@ -273,7 +251,7 @@ final class WeaviateFilters {
                 if (value instanceof Boolean bool) {
                     yield bool;
                 }
-                String str = value.toString();
+                var str = value.toString();
                 if (!str.equalsIgnoreCase("true") && !str.equalsIgnoreCase("false")) {
                     throw new IllegalArgumentException("'" + value + "' is not a boolean.");
                 }
@@ -307,24 +285,20 @@ final class WeaviateFilters {
         if (value instanceof Number number) {
             return number.doubleValue();
         }
-        if (
-            value instanceof Date || value instanceof Instant || value instanceof ZonedDateTime || value instanceof OffsetDateTime
-                || value instanceof LocalDateTime || value instanceof LocalDate
-        ) {
-            return toDate(value, null);
+        var date = WeaviateDates.toOffsetDateTime(value);
+        if (date.isPresent()) {
+            return date.get();
         }
         return value.toString();
     }
 
     private static OffsetDateTime toDate(Object value, String property) {
-        String context = property == null ? "" : " for '" + property + "'";
+        var context = property == null ? "" : " for '" + property + "'";
+        var date = WeaviateDates.toOffsetDateTime(value);
+        if (date.isPresent()) {
+            return date.get();
+        }
         return switch (value) {
-            case OffsetDateTime odt -> odt;
-            case ZonedDateTime zdt -> zdt.toOffsetDateTime();
-            case Instant instant -> instant.atOffset(ZoneOffset.UTC);
-            case Date date -> date.toInstant().atOffset(ZoneOffset.UTC);
-            case LocalDateTime ldt -> ldt.atOffset(ZoneOffset.UTC);
-            case LocalDate ld -> ld.atStartOfDay().atOffset(ZoneOffset.UTC);
             case String str -> {
                 try {
                     yield OffsetDateTime.parse(str);

@@ -1,12 +1,10 @@
 package io.kestra.plugin.weaviate;
 
-import java.io.BufferedReader;
-import java.io.InputStreamReader;
 import java.net.URI;
-import java.nio.charset.StandardCharsets;
 import java.time.*;
-import java.time.format.DateTimeFormatter;
 import java.util.*;
+
+import com.fasterxml.jackson.core.type.TypeReference;
 
 import io.kestra.core.models.annotations.Example;
 import io.kestra.core.models.annotations.Plugin;
@@ -22,7 +20,6 @@ import io.weaviate.client6.v1.api.WeaviateClient;
 import io.weaviate.client6.v1.api.collections.CollectionHandle;
 import io.weaviate.client6.v1.api.collections.Vectors;
 import io.weaviate.client6.v1.api.collections.WeaviateObject;
-import io.weaviate.client6.v1.api.collections.data.InsertManyResponse;
 import jakarta.validation.constraints.NotNull;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
@@ -35,9 +32,10 @@ import reactor.core.publisher.Flux;
 @NoArgsConstructor
 @Schema(
     title = "Batch insert Weaviate objects",
-    description = "Loads objects into a collection over gRPC from a Kestra ION file or an inline list, in chunks of `batchSize`. " +
-        "Each object gets a generated UUID unless `uuidKey` is set. If the collection is missing, Weaviate auto-schema (if enabled) creates it. " +
-        "By default the task fails when any object is rejected; set `failOnError: false` to report rejected objects in the output instead."
+    description = """
+        Loads objects into a collection over gRPC from a Kestra ION file or an inline list, in chunks of `batchSize`.
+        Each object gets a generated UUID unless `uuidKey` is set. If the collection is missing, Weaviate auto-schema (if enabled) creates it.
+        By default the task fails when any object is rejected; set `failOnError: false` to report rejected objects in the output instead."""
 )
 @Plugin(
     examples = {
@@ -126,16 +124,18 @@ public class BatchCreate extends WeaviateConnection implements RunnableTask<Batc
 
     @Schema(
         title = "Key holding the object UUID",
-        description = "When set, this key is removed from each object and used as its UUID; objects without it get a generated UUID. " +
-            "Inserting an existing UUID replaces that object."
+        description = """
+            When set, this key is removed from each object and used as its UUID; objects without it get a generated UUID.
+            Inserting an existing UUID replaces that object."""
     )
     @PluginProperty(group = "processing")
     private Property<String> uuidKey;
 
     @Schema(
         title = "Key holding the object vector",
-        description = "When set, this key is removed from each object and used as its vector (a list of numbers, or a list of lists for multi-vectors). " +
-            "Use this for collections without a vectorizer."
+        description = """
+            When set, this key is removed from each object and used as its vector (a list of numbers, or a list of lists for multi-vectors).
+            Use this for collections without a vectorizer."""
     )
     @PluginProperty(group = "processing")
     private Property<String> vectorKey;
@@ -144,7 +144,7 @@ public class BatchCreate extends WeaviateConnection implements RunnableTask<Batc
     @PluginProperty(group = "processing")
     private Property<String> targetVector;
 
-    @Schema(title = "Number of objects sent per request")
+    @Schema(title = "Number of objects sent per request", description = "Between 1 and 10000.")
     @Builder.Default
     @PluginProperty(group = "advanced")
     private Property<Integer> batchSize = Property.ofValue(500);
@@ -163,29 +163,29 @@ public class BatchCreate extends WeaviateConnection implements RunnableTask<Batc
 
     @Override
     public Output run(RunContext runContext) throws Exception {
-        String renderedClassName = runContext.render(className).as(String.class).orElseThrow();
-        String renderedUuidKey = runContext.render(uuidKey).as(String.class).orElse(null);
-        String renderedVectorKey = runContext.render(vectorKey).as(String.class).orElse(null);
-        String renderedTargetVector = runContext.render(targetVector).as(String.class).orElse(null);
-        String renderedTenant = runContext.render(tenant).as(String.class).orElse(null);
-        int renderedBatchSize = runContext.render(batchSize).as(Integer.class).orElse(500);
-        boolean renderedFailOnError = runContext.render(failOnError).as(Boolean.class).orElse(true);
-        if (renderedBatchSize < 1 || renderedBatchSize > 10_000) {
-            throw new IllegalArgumentException("`batchSize` must be between 1 and 10000, got " + renderedBatchSize + ".");
+        var rClassName = runContext.render(className).as(String.class).orElseThrow(() -> new IllegalArgumentException("`className` is required."));
+        var rUuidKey = runContext.render(uuidKey).as(String.class).orElse(null);
+        var rVectorKey = runContext.render(vectorKey).as(String.class).orElse(null);
+        var rTargetVector = runContext.render(targetVector).as(String.class).orElse(null);
+        var rTenant = runContext.render(tenant).as(String.class).orElse(null);
+        int rBatchSize = runContext.render(batchSize).as(Integer.class).orElse(500);
+        boolean rFailOnError = runContext.render(failOnError).as(Boolean.class).orElse(true);
+        if (rBatchSize < 1 || rBatchSize > 10_000) {
+            throw new IllegalArgumentException("`batchSize` must be between 1 and 10000, got " + rBatchSize + ".");
         }
 
-        ObjectConverter converter = new ObjectConverter(renderedUuidKey, renderedVectorKey, renderedTargetVector);
-        Result result = new Result();
+        var converter = new ObjectConverter(rUuidKey, rVectorKey, rTargetVector);
+        var result = new Result();
 
         try (WeaviateClient client = connect(runContext)) {
-            CollectionHandle<Map<String, Object>> collection = client.collections.use(renderedClassName);
-            if (renderedTenant != null) {
-                collection = collection.withTenant(renderedTenant);
+            var collection = client.collections.use(rClassName);
+            if (rTenant != null) {
+                collection = collection.withTenant(rTenant);
             }
-            CollectionHandle<Map<String, Object>> target = collection;
+            var target = collection;
 
             if (objects instanceof List<?> list) {
-                Flux<Map<String, Object>> flux = Flux.fromIterable(list)
+                var flux = Flux.fromIterable(list)
                     .map(item ->
                     {
                         if (!(item instanceof Map<?, ?> map)) {
@@ -197,16 +197,13 @@ public class BatchCreate extends WeaviateConnection implements RunnableTask<Batc
                             throw new IllegalArgumentException("Failed to render object: " + e.getMessage(), e);
                         }
                     });
-                insert(flux, renderedBatchSize, target, converter, result);
+                insert(flux, rBatchSize, target, converter, result);
             } else if (objects instanceof String uri) {
-                try (
-                    BufferedReader reader = new BufferedReader(
-                        new InputStreamReader(runContext.storage().getFile(URI.create(runContext.render(uri))), StandardCharsets.UTF_8)
-                    )
-                ) {
-                    Flux<Map<String, Object>> flux = FileSerde.readAll(reader, new com.fasterxml.jackson.core.type.TypeReference<Map<String, Object>>() {
+                // Read the raw stream: internal storage may hold binary Ion, which a text Reader would corrupt.
+                try (var is = runContext.storage().getFile(URI.create(runContext.render(uri)))) {
+                    var flux = FileSerde.readAll(is, new TypeReference<Map<String, Object>>() {
                     });
-                    insert(flux, renderedBatchSize, target, converter, result);
+                    insert(flux, rBatchSize, target, converter, result);
                 }
             } else {
                 throw new IllegalArgumentException("`objects` must be a storage URI or a list of maps.");
@@ -215,9 +212,9 @@ public class BatchCreate extends WeaviateConnection implements RunnableTask<Batc
 
         runContext.metric(Counter.of("records", result.inserted));
         runContext.metric(Counter.of("failed", result.failed));
-        runContext.logger().info("Inserted {} objects into '{}', {} rejected", result.inserted, renderedClassName, result.failed);
+        runContext.logger().info("Inserted {} objects into '{}', {} rejected", result.inserted, rClassName, result.failed);
 
-        if (result.failed > 0 && renderedFailOnError) {
+        if (result.failed > 0 && rFailOnError) {
             throw new IllegalStateException(
                 result.failed + " of " + (result.inserted + result.failed) + " objects were rejected by Weaviate. First errors: " +
                     result.errors.stream().limit(5).map(e -> "#" + e.getIndex() + " " + e.getMessage()).toList()
@@ -239,10 +236,10 @@ public class BatchCreate extends WeaviateConnection implements RunnableTask<Batc
                 batch.add(converter.toObject(map));
             }
 
-            InsertManyResponse response = collection.data.insertMany(batch);
-            List<InsertManyResponse.InsertObject> responses = response.responses();
+            var response = collection.data.insertMany(batch);
+            var responses = response.responses();
             for (int i = 0; i < responses.size(); i++) {
-                InsertManyResponse.InsertObject r = responses.get(i);
+                var r = responses.get(i);
                 if (r.successful()) {
                     result.inserted++;
                 } else {
@@ -268,15 +265,11 @@ public class BatchCreate extends WeaviateConnection implements RunnableTask<Batc
         final List<ObjectError> errors = new ArrayList<>();
     }
 
-    /**
-     * Turns one input map into a Weaviate object: pulls out the UUID and vector keys and converts
-     * values into types the v6 client can marshal.
-     */
     record ObjectConverter(String uuidKey, String vectorKey, String targetVector) {
         WeaviateObject<Map<String, Object>> toObject(Map<String, Object> input) {
             Map<String, Object> properties = new LinkedHashMap<>(input);
-            Object rawUuid = uuidKey != null ? properties.remove(uuidKey) : null;
-            Object rawVector = vectorKey != null ? properties.remove(vectorKey) : null;
+            var rawUuid = uuidKey != null ? properties.remove(uuidKey) : null;
+            var rawVector = vectorKey != null ? properties.remove(vectorKey) : null;
 
             String uuid;
             if (rawUuid == null) {
@@ -289,8 +282,8 @@ public class BatchCreate extends WeaviateConnection implements RunnableTask<Batc
                 }
             }
 
-            Map<String, Object> converted = convertProperties(properties);
-            Vectors vectors = rawVector == null ? null : toVectors(rawVector);
+            var converted = convertProperties(properties);
+            var vectors = rawVector == null ? null : toVectors(rawVector);
             return WeaviateObject.of(o ->
             {
                 o.uuid(uuid).properties(converted);
@@ -335,7 +328,7 @@ public class BatchCreate extends WeaviateConnection implements RunnableTask<Batc
         Map<String, Object> result = new LinkedHashMap<>();
         properties.forEach((key, value) ->
         {
-            Object converted = convertValue(value);
+            var converted = convertValue(value);
             if (converted != null) {
                 result.put(key, converted);
             }
@@ -343,33 +336,23 @@ public class BatchCreate extends WeaviateConnection implements RunnableTask<Batc
         return result;
     }
 
-    /**
-     * Maps ION/JSON values onto the types accepted by the v6 gRPC marshaller: dates become RFC3339 strings,
-     * nested maps and lists are converted recursively, and anything else unknown becomes its string form.
-     * Dates are formatted here because the client's OffsetDateTime.toString() drops zero seconds, which the server rejects.
-     */
+    // Dates become RFC3339 text: see WeaviateDates.rfc3339.
     @SuppressWarnings("unchecked")
     static Object convertValue(Object value) {
+        var date = WeaviateDates.toOffsetDateTime(value);
+        if (date.isPresent()) {
+            return WeaviateDates.rfc3339(date.get());
+        }
         return switch (value) {
             case null -> null;
             case String s -> s;
             case Boolean b -> b;
             case Number n -> n;
             case UUID u -> u;
-            case OffsetDateTime odt -> rfc3339(odt);
-            case ZonedDateTime zdt -> rfc3339(zdt.toOffsetDateTime());
-            case Instant instant -> rfc3339(instant.atOffset(ZoneOffset.UTC));
-            case LocalDateTime ldt -> rfc3339(ldt.atOffset(ZoneOffset.UTC));
-            case LocalDate ld -> rfc3339(ld.atStartOfDay().atOffset(ZoneOffset.UTC));
-            case Date date -> rfc3339(date.toInstant().atOffset(ZoneOffset.UTC));
             case Map<?, ?> map -> convertProperties((Map<String, Object>) map);
             case Collection<?> list -> list.stream().map(BatchCreate::convertValue).filter(Objects::nonNull).toList();
             default -> value.toString();
         };
-    }
-
-    private static String rfc3339(OffsetDateTime date) {
-        return date.format(DateTimeFormatter.ISO_OFFSET_DATE_TIME);
     }
 
     @Builder

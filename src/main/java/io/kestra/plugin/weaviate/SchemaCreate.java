@@ -29,8 +29,9 @@ import lombok.experimental.SuperBuilder;
 @NoArgsConstructor
 @Schema(
     title = "Create a Weaviate collection",
-    description = "Creates a collection (class) with the given properties and vectorizer. Fails if the collection already exists, " +
-        "unless `skipIfExists` is true."
+    description = """
+        Creates a collection (class) with the given properties and vectorizer. Fails if the collection already exists,
+        unless `skipIfExists` is true."""
 )
 @Plugin(
     examples = {
@@ -86,17 +87,19 @@ public class SchemaCreate extends WeaviateConnection implements RunnableTask<Sch
 
     @Schema(
         title = "Properties to add to the collection",
-        description = "Map of property name to a Weaviate data type: text, int, number, boolean, date, uuid (each also as an array, e.g. text[]), " +
-            "blob, geoCoordinates or phoneNumber. A single-element list is also accepted; the legacy `string` type maps to text."
+        description = """
+            Map of property name to a Weaviate data type: text, int, number, boolean, date, uuid (each also as an array, e.g. text[]),
+            blob, geoCoordinates or phoneNumber. A single-element list is also accepted; the legacy `string` type maps to text."""
     )
     @PluginProperty(group = "main")
     private io.kestra.core.models.property.Property<Map<String, Object>> fields;
 
     @Schema(
         title = "Vectorizer",
-        description = "NONE (default) means vectors are provided on insert, e.g. with `BatchCreate.vectorKey`. " +
-            "Other values vectorize text properties server-side; the module must be enabled on the server. " +
-            "Unlike plugin versions built on the v5 client, the server's DEFAULT_VECTORIZER_MODULE is not used, so set this explicitly."
+        description = """
+            NONE (default) means vectors are provided on insert, e.g. with `BatchCreate.vectorKey`.
+            Other values vectorize text properties server-side; the module must be enabled on the server.
+            Unlike plugin versions built on the v5 client, the server's DEFAULT_VECTORIZER_MODULE is not used, so set this explicitly."""
     )
     @Builder.Default
     @PluginProperty(group = "processing")
@@ -117,22 +120,22 @@ public class SchemaCreate extends WeaviateConnection implements RunnableTask<Sch
 
     @Override
     public SchemaCreate.Output run(RunContext runContext) throws Exception {
-        String renderedClassName = runContext.render(className).as(String.class).orElseThrow();
-        List<Property> properties = buildProperties(runContext.render(fields).asMap(String.class, Object.class), runContext.logger());
-        Map.Entry<String, VectorConfig> vectorConfig = buildVectorConfig(
+        var rClassName = runContext.render(className).as(String.class).orElseThrow(() -> new IllegalArgumentException("`className` is required."));
+        var properties = buildProperties(runContext.render(fields).asMap(String.class, Object.class), runContext.logger());
+        var vectorConfig = buildVectorConfig(
             runContext.render(vectorizer).as(Vectorizer.class).orElse(Vectorizer.NONE),
             runContext.render(vectorizerModel).as(String.class).orElse(null),
             runContext.render(vectorName).as(String.class).orElse(null)
         );
-        boolean renderedSkipIfExists = runContext.render(skipIfExists).as(Boolean.class).orElse(false);
+        boolean rSkipIfExists = runContext.render(skipIfExists).as(Boolean.class).orElse(false);
 
         try (WeaviateClient client = connect(runContext)) {
-            if (renderedSkipIfExists && client.collections.exists(renderedClassName)) {
-                runContext.logger().info("Collection '{}' already exists, skipping", renderedClassName);
+            if (rSkipIfExists && client.collections.exists(rClassName)) {
+                runContext.logger().info("Collection '{}' already exists, skipping", rClassName);
                 return Output.builder().success(true).created(false).build();
             }
 
-            client.collections.create(renderedClassName, c -> c.properties(properties).vectorConfig(vectorConfig));
+            client.collections.create(rClassName, c -> c.properties(properties).vectorConfig(vectorConfig));
         }
 
         return Output.builder().success(true).created(true).build();
@@ -158,7 +161,7 @@ public class SchemaCreate extends WeaviateConnection implements RunnableTask<Sch
     }
 
     static Property buildProperty(String name, String type, Logger logger) {
-        String normalized = type.trim().toLowerCase(Locale.ROOT);
+        var normalized = type.trim().toLowerCase(Locale.ROOT);
         if (normalized.equals("string") || normalized.equals("string[]")) {
             if (logger != null) {
                 logger.warn("Field '{}' uses the deprecated '{}' type; creating it as '{}'", name, type, normalized.replace("string", "text"));

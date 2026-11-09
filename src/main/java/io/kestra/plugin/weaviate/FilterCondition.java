@@ -12,8 +12,9 @@ import lombok.extern.jackson.Jacksonized;
 @Jacksonized
 @Schema(
     title = "Condition on one object property",
-    description = "Compares `property` to `value` with `operator`. Use `_id` for the object UUID and `_creationTimeUnix` or " +
-        "`_lastUpdateTimeUnix` for object timestamps (these need `indexTimestamps` enabled on the collection)."
+    description = """
+        Compares `property` to `value` with `operator`. Use `_id` for the object UUID and `_creationTimeUnix` or
+        `_lastUpdateTimeUnix` for object timestamps (these need `indexTimestamps` enabled on the collection)."""
 )
 public class FilterCondition {
     @Schema(title = "Property name")
@@ -32,8 +33,9 @@ public class FilterCondition {
 
     @Schema(
         title = "Force the value type",
-        description = "Weaviate filters are typed. Without this, the type is inferred from the YAML value, so set it for dates (`DATE`), " +
-            "UUIDs (`UUID`), or numbers stored as `number` but written as integers (`NUMBER`)."
+        description = """
+            Weaviate filters are typed. Without this, the type is inferred from the YAML value, so set it for dates (`DATE`),
+            UUIDs (`UUID`), or numbers stored as `number` but written as integers (`NUMBER`)."""
     )
     ValueType valueType;
 

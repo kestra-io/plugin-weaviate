@@ -62,7 +62,9 @@ class QueryValidationTest {
             arguments(search(SearchType.NEAR_VECTOR).vector(VECTOR).query("q"), "`query` is not supported"),
             arguments(search(SearchType.NEAR_VECTOR).vector(VECTOR).certainty(2.0), "`certainty` must be between 0 and 1"),
             arguments(search(SearchType.FETCH_OBJECTS).limit(0), "`limit` must be greater than 0"),
-            arguments(search(SearchType.FETCH_OBJECTS).offset(-1), "`offset` must not be negative")
+            arguments(search(SearchType.FETCH_OBJECTS).offset(-1), "`offset` must not be negative"),
+            arguments(search(SearchType.FETCH_OBJECTS).query("{ Get { Question { title } } }"), "GraphQL is no longer supported"),
+            arguments(search(SearchType.BM25).query("\n  {\n    Get {\n      Question(limit: 2) { title }\n    }\n  }"), "GraphQL is no longer supported")
         );
     }
 

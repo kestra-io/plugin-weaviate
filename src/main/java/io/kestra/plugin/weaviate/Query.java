@@ -1,6 +1,5 @@
 package io.kestra.plugin.weaviate;
 
-import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
@@ -41,9 +40,10 @@ import reactor.core.publisher.Flux;
 @NoArgsConstructor
 @Schema(
     title = "Search objects in a Weaviate collection",
-    description = "Runs a fetch, BM25, hybrid, near-text or near-vector search over gRPC and returns matching objects. " +
-        "Each row is `{uuid, properties, metadata, vector?, vectors?}`. Defaults to storing all rows to Kestra storage as ION; " +
-        "other fetch modes return rows inline. Requires Weaviate 1.32 or later."
+    description = """
+        Runs a fetch, BM25, hybrid, near-text or near-vector search over gRPC and returns matching objects.
+        Each row is `{uuid, properties, metadata, vector?, vectors?}`. Defaults to storing all rows to Kestra storage as ION;
+        other fetch modes return rows inline. Requires Weaviate 1.32 or later."""
 )
 @Plugin(
     examples = {
@@ -170,8 +170,9 @@ public class Query extends WeaviateConnection implements RunnableTask<FetchOutpu
 
     @Schema(
         title = "Search type",
-        description = "FETCH_OBJECTS lists objects without ranking. BM25 is keyword search on `query`. HYBRID blends BM25 and vector search on `query` " +
-            "(and optionally `vector`). NEAR_TEXT vectorizes `query` with the collection's vectorizer. NEAR_VECTOR searches by `vector`."
+        description = """
+            FETCH_OBJECTS lists objects without ranking. BM25 is keyword search on `query`. HYBRID blends BM25 and vector search on `query`
+            (and optionally `vector`). NEAR_TEXT vectorizes `query` with the collection's vectorizer. NEAR_VECTOR searches by `vector`."""
     )
     @NotNull
     @Builder.Default
@@ -212,13 +213,14 @@ public class Query extends WeaviateConnection implements RunnableTask<FetchOutpu
 
     @Schema(
         title = "Maximum number of objects to return",
-        description = "Defaults to the server's `QUERY_DEFAULTS_LIMIT`, so FETCH_OBJECTS without `limit` does not return every object. " +
-            "Capped by the server's `QUERY_MAXIMUM_RESULTS`."
+        description = """
+            Defaults to the server's `QUERY_DEFAULTS_LIMIT`, so FETCH_OBJECTS without `limit` does not return every object.
+            Must be at least 1, and is capped by the server's `QUERY_MAXIMUM_RESULTS`."""
     )
     @PluginProperty(group = "processing")
     private Property<Integer> limit;
 
-    @Schema(title = "Number of objects to skip")
+    @Schema(title = "Number of objects to skip", description = "Must be 0 or more.")
     @PluginProperty(group = "processing")
     private Property<Integer> offset;
 
@@ -277,8 +279,8 @@ public class Query extends WeaviateConnection implements RunnableTask<FetchOutpu
 
     @Override
     public FetchOutput run(RunContext runContext) throws Exception {
-        Search search = Search.builder()
-            .className(runContext.render(className).as(String.class).orElseThrow())
+        var search = Search.builder()
+            .className(runContext.render(className).as(String.class).orElseThrow(() -> new IllegalArgumentException("`className` is required.")))
             .searchType(runContext.render(searchType).as(SearchType.class).orElse(SearchType.FETCH_OBJECTS))
             .query(runContext.render(query).as(String.class).orElse(null))
             .vector(runContext.render(vector).asList(Double.class))
@@ -302,14 +304,14 @@ public class Query extends WeaviateConnection implements RunnableTask<FetchOutpu
             .build();
         search.validate();
 
-        String renderedTenant = runContext.render(tenant).as(String.class).orElse(null);
-        FetchType renderedFetchType = runContext.render(fetchType).as(FetchType.class).orElseThrow();
+        var rTenant = runContext.render(tenant).as(String.class).orElse(null);
+        var rFetchType = runContext.render(fetchType).as(FetchType.class).orElse(FetchType.STORE);
 
         List<Map<String, Object>> rows;
         try (WeaviateClient client = connect(runContext)) {
-            CollectionHandle<Map<String, Object>> collection = client.collections.use(search.className());
-            if (renderedTenant != null) {
-                collection = collection.withTenant(renderedTenant);
+            var collection = client.collections.use(search.className());
+            if (rTenant != null) {
+                collection = collection.withTenant(rTenant);
             }
             rows = search.execute(collection).objects().stream()
                 .map(WeaviateRows::toRow)
@@ -319,8 +321,8 @@ public class Query extends WeaviateConnection implements RunnableTask<FetchOutpu
         runContext.metric(Counter.of("records", rows.size()));
         runContext.logger().debug("{} search on '{}' returned {} objects", search.searchType(), search.className(), rows.size());
 
-        FetchOutput.FetchOutputBuilder output = FetchOutput.builder();
-        return switch (renderedFetchType) {
+        var output = FetchOutput.builder();
+        return switch (rFetchType) {
             case FETCH_ONE -> output.size(rows.isEmpty() ? 0L : 1L).row(rows.isEmpty() ? null : rows.getFirst()).build();
             case FETCH -> output.size((long) rows.size()).rows(new ArrayList<>(rows)).build();
             case STORE -> output.size((long) rows.size()).uri(store(rows, runContext)).build();
@@ -329,7 +331,7 @@ public class Query extends WeaviateConnection implements RunnableTask<FetchOutpu
     }
 
     private URI store(List<Map<String, Object>> rows, RunContext runContext) throws IOException {
-        File tempFile = runContext.workingDir().createTempFile(".ion").toFile();
+        var tempFile = runContext.workingDir().createTempFile(".ion").toFile();
         try (OutputStream output = new FileOutputStream(tempFile)) {
             FileSerde.writeAll(output, Flux.fromIterable(rows)).block();
             output.flush();
@@ -360,10 +362,7 @@ public class Query extends WeaviateConnection implements RunnableTask<FetchOutpu
         }
     }
 
-    /**
-     * Rendered search parameters. Kept separate from the task so validation and dispatch can be unit-tested
-     * without a server.
-     */
+    // Kept apart from the task so validation and dispatch can be unit-tested without a server.
     @Builder
     record Search(
         String className,
@@ -381,12 +380,15 @@ public class Query extends WeaviateConnection implements RunnableTask<FetchOutpu
         List<MetadataField> returnMetadata,
         boolean includeVector,
         Filter filter) {
-        /**
-         * Rejects parameter combinations that the chosen search type ignores or needs, before any network call.
-         */
         void validate() {
             if (className == null || className.isBlank()) {
                 throw new IllegalArgumentException("`className` is required.");
+            }
+            if (looksLikeGraphQL(query)) {
+                throw new IllegalArgumentException(
+                    "`query` looks like a GraphQL query. GraphQL is no longer supported: `query` is now the search text. " +
+                        "Use `searchType`, `returnProperties`, `filters` and `limit` instead; see \"Upgrading from the GraphQL-based plugin\" in the plugin documentation."
+                );
             }
             boolean hasQuery = query != null && !query.isBlank();
             boolean hasVector = vector != null && !vector.isEmpty();
@@ -444,6 +446,14 @@ public class Query extends WeaviateConnection implements RunnableTask<FetchOutpu
             if (offset != null && offset < 0) {
                 throw new IllegalArgumentException("`offset` must not be negative, got " + offset + ".");
             }
+        }
+
+        static boolean looksLikeGraphQL(String query) {
+            if (query == null) {
+                return false;
+            }
+            var trimmed = query.strip();
+            return trimmed.startsWith("{") && (trimmed.contains("Get") || trimmed.contains("Aggregate") || trimmed.contains("Explore"));
         }
 
         private void require(boolean present, String property) {

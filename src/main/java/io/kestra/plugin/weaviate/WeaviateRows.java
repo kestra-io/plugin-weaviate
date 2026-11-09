@@ -1,38 +1,28 @@
 package io.kestra.plugin.weaviate;
 
 import java.time.OffsetDateTime;
-import java.time.format.DateTimeFormatter;
 import java.util.*;
 
 import io.weaviate.client6.v1.api.collections.GeoCoordinates;
 import io.weaviate.client6.v1.api.collections.PhoneNumber;
 import io.weaviate.client6.v1.api.collections.VectorIndex;
-import io.weaviate.client6.v1.api.collections.Vectors;
 import io.weaviate.client6.v1.api.collections.WeaviateObject;
-import io.weaviate.client6.v1.api.collections.query.QueryMetadata;
 
-/**
- * Converts query results into plain maps that Kestra can serialize to JSON outputs and ION files.
- */
 final class WeaviateRows {
     private WeaviateRows() {
     }
 
-    /**
-     * Returns {@code {uuid, properties, metadata, vector?, vectors?}}. Metadata only holds the fields
-     * the server returned; {@code vector} is the default vector and {@code vectors} holds named ones.
-     */
     static Map<String, Object> toRow(WeaviateObject<Map<String, Object>> object) {
         Map<String, Object> row = new LinkedHashMap<>();
         row.put("uuid", object.uuid());
         row.put("properties", object.properties() == null ? Map.of() : convertMap(object.properties()));
         row.put("metadata", metadata(object));
 
-        Vectors vectors = object.vectors();
+        var vectors = object.vectors();
         if (vectors != null && vectors.size() > 0) {
             Map<String, Object> all = new LinkedHashMap<>();
             vectors.asMap().forEach((name, vector) -> all.put(name, convert(vector)));
-            Object defaultVector = all.remove(VectorIndex.DEFAULT_VECTOR_NAME);
+            var defaultVector = all.remove(VectorIndex.DEFAULT_VECTOR_NAME);
             if (defaultVector != null) {
                 row.put("vector", defaultVector);
             }
@@ -45,7 +35,7 @@ final class WeaviateRows {
 
     private static Map<String, Object> metadata(WeaviateObject<Map<String, Object>> object) {
         Map<String, Object> metadata = new LinkedHashMap<>();
-        QueryMetadata query = object.queryMetadata();
+        var query = object.queryMetadata();
         if (query != null) {
             putIfPresent(metadata, "distance", query.distance());
             putIfPresent(metadata, "certainty", query.certainty());
@@ -75,7 +65,7 @@ final class WeaviateRows {
             case String s -> s;
             case Boolean b -> b;
             case Number n -> n;
-            case OffsetDateTime date -> date.format(DateTimeFormatter.ISO_OFFSET_DATE_TIME);
+            case OffsetDateTime date -> WeaviateDates.rfc3339(date);
             case UUID uuid -> uuid.toString();
             case float[] vector -> toList(vector);
             case float[][] multi -> Arrays.stream(multi).map(WeaviateRows::toList).toList();

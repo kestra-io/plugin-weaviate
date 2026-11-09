@@ -84,5 +84,18 @@ class WeaviateConnectionTest {
         assertThrows(IllegalArgumentException.class, () -> Endpoint.parse("", null, null));
         assertThrows(IllegalArgumentException.class, () -> Endpoint.parse("ftp://host", null, null));
         assertThrows(IllegalArgumentException.class, () -> Endpoint.parse("http://host:8080/v1", null, null));
+        assertThrows(IllegalArgumentException.class, () -> Endpoint.parse("http://host:8080", null, 0));
+        assertThrows(IllegalArgumentException.class, () -> Endpoint.parse("http://host:8080", null, 70000));
+    }
+
+    @Test
+    void toStringHidesCredentials() {
+        var task = Query.builder()
+            .url("http://localhost:8080")
+            .apiKey(io.kestra.core.models.property.Property.ofValue("super-secret-key"))
+            .headers(io.kestra.core.models.property.Property.ofValue(Map.of("X-OpenAI-Api-Key", "sk-secret")))
+            .build();
+        assertThat(task.toString(), not(containsString("super-secret-key")));
+        assertThat(task.toString(), not(containsString("sk-secret")));
     }
 }
