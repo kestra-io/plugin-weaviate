@@ -30,7 +30,9 @@ class QueryValidationTest {
             arguments(search(SearchType.HYBRID).query("q").alpha(1.0).vector(VECTOR).targetVector("v")),
             arguments(search(SearchType.NEAR_TEXT).query("q").distance(0.3)),
             arguments(search(SearchType.NEAR_TEXT).query("q").certainty(0.8).targetVector("v")),
-            arguments(search(SearchType.NEAR_VECTOR).vector(VECTOR).distance(0.2))
+            arguments(search(SearchType.NEAR_VECTOR).vector(VECTOR).distance(0.2)),
+            arguments(search(SearchType.FETCH_OBJECTS).targetVector("v").includeVector(true)),
+            arguments(search(SearchType.BM25).query("q").targetVector("v").includeVector(true))
         );
     }
 
@@ -51,7 +53,8 @@ class QueryValidationTest {
             arguments(search(SearchType.NEAR_VECTOR).vector(java.util.Arrays.asList(0.1, null)), "`vector` must not contain null values"),
             arguments(search(SearchType.BM25).query("q").alpha(0.5), "`alpha` is not supported"),
             arguments(search(SearchType.BM25).query("q").certainty(0.5), "`certainty` is not supported"),
-            arguments(search(SearchType.BM25).query("q").targetVector("v"), "`targetVector` is not supported"),
+            arguments(search(SearchType.BM25).query("q").targetVector("v"), "set `includeVector: true`"),
+            arguments(search(SearchType.FETCH_OBJECTS).targetVector("v"), "set `includeVector: true`"),
             arguments(search(SearchType.HYBRID).query(" "), "`query` is required for searchType HYBRID"),
             arguments(search(SearchType.HYBRID).query("q").alpha(1.5), "`alpha` must be between 0 and 1"),
             arguments(search(SearchType.HYBRID).query("q").distance(0.5), "`distance` is not supported"),

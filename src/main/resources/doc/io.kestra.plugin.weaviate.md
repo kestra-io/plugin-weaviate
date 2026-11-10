@@ -44,7 +44,7 @@ Pass extra headers with `headers`, for example vectorizer API keys such as `X-Op
 | `NEAR_TEXT` | vector search on `query`, vectorized by the collection's vectorizer |
 | `NEAR_VECTOR` | vector search on `vector` |
 
-Each result row is `{uuid, properties, metadata, vector?, vectors?}`. Request metadata such as `DISTANCE` or `SCORE` with `returnMetadata`, and vectors with `includeVector`. Control result handling with `fetchType` (default `STORE`).
+Each result row is `{uuid, properties, metadata, vector?, vectors?}`. Request metadata such as `DISTANCE` or `SCORE` with `returnMetadata`, and vectors with `includeVector` (add `targetVector` to return only that named vector, with any `searchType`). Control result handling with `fetchType` (default `STORE`).
 
 `Delete` removes objects from a collection: set `objectId` to delete one object, or filters to delete every match. Deleting all objects requires `deleteAll: true`. The task fails if Weaviate rejects any deletion, unless `failOnError` is false.
 

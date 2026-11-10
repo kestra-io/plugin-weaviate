@@ -229,8 +229,10 @@ public class Query extends WeaviateConnection implements RunnableTask<FetchOutpu
     private Property<Double> alpha;
 
     @Schema(
-        title = "Named vector to search",
-        description = "For collections with named vectors: the vector used by NEAR_TEXT, NEAR_VECTOR and HYBRID."
+        title = "Named vector to search or return",
+        description = """
+            For collections with named vectors: the vector used by NEAR_TEXT, NEAR_VECTOR and HYBRID.
+            With `includeVector`, also the only vector returned. FETCH_OBJECTS and BM25 accept it only with `includeVector`."""
     )
     @PluginProperty(group = "processing")
     private Property<String> targetVector;
@@ -292,7 +294,7 @@ public class Query extends WeaviateConnection implements RunnableTask<FetchOutpu
     @PluginProperty(group = "processing")
     private Property<List<MetadataField>> returnMetadata;
 
-    @Schema(title = "Return object vectors", description = "Adds `vector` (default vector) and `vectors` (named vectors) to each row.")
+    @Schema(title = "Return object vectors", description = "Adds `vector` (default vector) and `vectors` (named vectors) to each row; with `targetVector`, only that vector.")
     @Builder.Default
     @PluginProperty(group = "processing")
     private Property<Boolean> includeVector = Property.ofValue(false);
@@ -438,7 +440,7 @@ public class Query extends WeaviateConnection implements RunnableTask<FetchOutpu
                     reject(distance != null, "distance");
                     reject(certainty != null, "certainty");
                     reject(hasQueryProperties, "queryProperties");
-                    reject(targetVector != null, "targetVector");
+                    requireIncludeVectorForTarget();
                 }
                 case BM25 -> {
                     require(hasQuery, "query");
@@ -446,7 +448,7 @@ public class Query extends WeaviateConnection implements RunnableTask<FetchOutpu
                     reject(alpha != null, "alpha");
                     reject(distance != null, "distance");
                     reject(certainty != null, "certainty");
-                    reject(targetVector != null, "targetVector");
+                    requireIncludeVectorForTarget();
                 }
                 case HYBRID -> {
                     require(hasQuery, "query");
@@ -495,6 +497,13 @@ public class Query extends WeaviateConnection implements RunnableTask<FetchOutpu
         private void require(boolean present, String property) {
             if (!present) {
                 throw new IllegalArgumentException("`" + property + "` is required for searchType " + searchType + ".");
+            }
+        }
+
+        // FETCH_OBJECTS and BM25 use no vector, so `targetVector` can only pick which vector to return.
+        private void requireIncludeVectorForTarget() {
+            if (targetVector != null && !includeVector) {
+                throw new IllegalArgumentException("`targetVector` with searchType " + searchType + " only selects the returned vector; set `includeVector: true`.");
             }
         }
 

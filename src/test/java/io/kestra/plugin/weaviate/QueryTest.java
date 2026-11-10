@@ -309,6 +309,16 @@ public class QueryTest extends WeaviateTest {
         Map<String, Object> row = rows(output).getFirst();
         assertThat(row.get("uuid"), is(CAR));
         assertThat(row.get("vectors"), is(Map.of("title_vec", List.of(0.0f, 1.0f))));
+
+        FetchOutput fetched = query()
+            .searchType(Property.ofValue(SearchType.FETCH_OBJECTS))
+            .filters(Property.ofValue(List.of(FilterCondition.builder().property("_id").operator(FilterCondition.Operator.EQUAL).value(CAT).build())))
+            .targetVector(Property.ofValue("title_vec"))
+            .includeVector(Property.ofValue(true))
+            .build()
+            .run(runContext);
+
+        assertThat(rows(fetched).getFirst().get("vectors"), is(Map.of("title_vec", List.of(1.0f, 0.0f))));
     }
 
     @Test
