@@ -1,6 +1,10 @@
 package io.kestra.plugin.weaviate;
 
+import java.io.IOException;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -8,6 +12,7 @@ import java.util.Set;
 import java.util.TreeSet;
 import java.util.function.Consumer;
 import java.util.function.Function;
+import java.util.stream.Collectors;
 
 import org.slf4j.Logger;
 
@@ -16,6 +21,7 @@ import io.kestra.core.models.annotations.Plugin;
 import io.kestra.core.models.annotations.PluginProperty;
 import io.kestra.core.models.tasks.RunnableTask;
 import io.kestra.core.runners.RunContext;
+import io.kestra.core.serializers.JacksonMapper;
 
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.weaviate.client6.v1.api.WeaviateClient;
@@ -369,7 +375,7 @@ public class SchemaCreate extends WeaviateConnection implements RunnableTask<Sch
             throw new IllegalArgumentException("`definition` describes the whole collection; remove " + String.join(", ", conflicting) + ".");
         }
 
-        var document = new java.util.LinkedHashMap<>(rDefinition);
+        var document = new LinkedHashMap<>(rDefinition);
         runContext.render(className).as(String.class).ifPresent(name -> document.put("class", name));
         if (!(document.get("class") instanceof String rClassName) || rClassName.isBlank()) {
             throw new IllegalArgumentException("`definition` must name the collection in `class`, or set `className`.");
@@ -377,12 +383,12 @@ public class SchemaCreate extends WeaviateConnection implements RunnableTask<Sch
         var tenantNames = tenantNames(rMultiTenancy);
 
         try (WeaviateClient client = connect(runContext)) {
-            boolean existed = client.collections.exists(rClassName);
+            var existed = client.collections.exists(rClassName);
             if (existed && !runContext.render(skipIfExists).as(Boolean.class).orElse(false)) {
                 throw new IllegalStateException("Collection '" + rClassName + "' already exists; set `skipIfExists: true` to reuse it.");
             }
             if (!existed) {
-                restPost(runContext, "/v1/schema", io.kestra.core.serializers.JacksonMapper.ofJson().writeValueAsString(document));
+                restPost(runContext, "/v1/schema", JacksonMapper.ofJson().writeValueAsString(document));
                 runContext.logger().info("Created collection '{}' from its JSON definition", rClassName);
             } else {
                 runContext.logger().info("Collection '{}' already exists, skipping", rClassName);
@@ -399,7 +405,7 @@ public class SchemaCreate extends WeaviateConnection implements RunnableTask<Sch
         if (Boolean.FALSE.equals(options.getEnabled())) {
             throw new IllegalArgumentException("`multiTenancy.tenants` needs multi-tenancy; remove `enabled: false`.");
         }
-        var names = new java.util.LinkedHashSet<String>();
+        var names = new LinkedHashSet<String>();
         for (var name : options.getTenants()) {
             if (name == null || name.isBlank()) {
                 throw new IllegalArgumentException("`multiTenancy.tenants` must not contain empty names.");
@@ -423,12 +429,12 @@ public class SchemaCreate extends WeaviateConnection implements RunnableTask<Sch
         });
     }
 
-    private static List<String> createMissingTenants(WeaviateClient client, String className, List<String> names) throws java.io.IOException {
+    private static List<String> createMissingTenants(WeaviateClient client, String className, List<String> names) throws IOException {
         if (names.isEmpty()) {
             return List.of();
         }
         var tenants = client.collections.use(className).tenants;
-        var existing = tenants.get(names).stream().map(Tenant::name).collect(java.util.stream.Collectors.toSet());
+        var existing = tenants.get(names).stream().map(Tenant::name).collect(Collectors.toSet());
         var missing = names.stream().filter(n -> !existing.contains(n)).toList();
         if (!missing.isEmpty()) {
             tenants.create(missing.stream().map(Tenant::active).toList());
@@ -499,7 +505,7 @@ public class SchemaCreate extends WeaviateConnection implements RunnableTask<Sch
             return Tokenization.valueOf(String.valueOf(value).trim().toUpperCase(Locale.ROOT));
         } catch (IllegalArgumentException e) {
             throw new IllegalArgumentException(
-                "Field '" + name + "': unknown `tokenization` '" + value + "'; supported: " + java.util.Arrays.toString(Tokenization.values()) + "."
+                "Field '" + name + "': unknown `tokenization` '" + value + "'; supported: " + Arrays.toString(Tokenization.values()) + "."
             );
         }
     }
@@ -723,8 +729,7 @@ public class SchemaCreate extends WeaviateConnection implements RunnableTask<Sch
         };
     }
 
-    // client6 6.3.2 sends the other quantizer settings (rescoreLimit, trainingLimit, PQ encoder) in snake_case, which
-    // Weaviate ignores, so they are not exposed until the client is fixed.
+    // Other quantizer settings are not exposed: client6 6.3.2 sends them in snake_case, which Weaviate ignores.
     private static void allowed(QuantizationType type, String option, Object value, QuantizationType... types) {
         if (value != null && !List.of(types).contains(type)) {
             throw new IllegalArgumentException("`quantization." + option + "` is only supported with " + List.of(types) + ", not " + type + ".");

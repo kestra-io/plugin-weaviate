@@ -49,11 +49,45 @@ public class BatchModesTest extends WeaviateTest {
         assertThat(output.getInsertedCount(), is(18L));
         assertThat(output.getFailedCount(), is(2L));
         assertThat(output.getMode(), is(BatchMode.FIXED_SIZE));
-        assertThat(output.getBatchSize(), is(2));
-        assertThat(output.getConcurrentRequests(), is(4));
         assertThat(output.getRequestCount(), is(10L));
         assertThat(output.getErrors().stream().map(BatchCreate.ObjectError::getIndex).toList(), is(List.of(3L, 15L)));
         assertThat(count(runContext), is(18));
+    }
+
+    @Test
+    public void fixedSizeInParallelReportsTheFirstErrorsInInputOrder() throws Exception {
+        createSelfProvidedCollection(io.weaviate.client6.v1.api.collections.Property.integer("n"));
+        RunContext runContext = runContextFactory.of();
+        var rejected = IntStream.range(0, 300).map(i -> i * 2).toArray();
+
+        var output = batchCreate()
+            .mode(Property.ofValue(BatchMode.FIXED_SIZE))
+            .batchSize(Property.ofValue(10))
+            .concurrentRequests(Property.ofValue(8))
+            .failOnError(Property.ofValue(false))
+            .objects(objects(600, rejected))
+            .build()
+            .run(runContext);
+
+        assertThat(output.getFailedCount(), is(300L));
+        assertThat(
+            output.getErrors().stream().map(BatchCreate.ObjectError::getIndex).toList(),
+            is(IntStream.range(0, BatchCreate.MAX_REPORTED_ERRORS).mapToObj(i -> (long) i * 2).toList())
+        );
+    }
+
+    @Test
+    public void errorsKeepTheLowestIndexes() {
+        var result = new BatchCreate.Result();
+        for (var i = 499; i >= 0; i--) {
+            BatchCreate.addError(result, new BatchCreate.ObjectError(i, null, "e" + i));
+        }
+        BatchCreate.finishErrors(result);
+
+        assertThat(
+            result.errors.stream().map(BatchCreate.ObjectError::getIndex).toList(),
+            is(IntStream.range(0, BatchCreate.MAX_REPORTED_ERRORS).mapToObj(i -> (long) i).toList())
+        );
     }
 
     @Test

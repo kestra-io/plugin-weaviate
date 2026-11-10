@@ -76,6 +76,8 @@ Special properties:
 
 `BatchCreate.mode` sets how objects are sent to Weaviate:
 
+> **Changed in 2.1:** `mode` defaults to `AUTO`. Up to 2.0, `BatchCreate` always sent sequential requests of `batchSize` objects; set `mode: FIXED_SIZE` to keep that behavior.
+
 | `mode` | How it sends | Settings |
 |---|---|---|
 | `AUTO` (default) | `SERVER_SIDE` on Weaviate 1.36 or later, otherwise `DYNAMIC` | |
@@ -87,7 +89,6 @@ Special properties:
 The outputs report what was used:
 
 - `mode`: the mode `AUTO` resolved to;
-- `batchSize` and `concurrentRequests`;
 - `requestCount`: the number of insert requests sent (not reported for `SERVER_SIDE`, where Weaviate sets the batches).
 
 When the collection does not exist yet, auto-schema creates it on the first insert. Concurrent requests (`SERVER_SIDE`, or `FIXED_SIZE` with `concurrentRequests` above 1) race to create it, and Weaviate rejects the losers' objects with "class name ... already exists". To avoid this, `BatchCreate` sends the first object on its own before going concurrent.
@@ -607,7 +608,7 @@ tasks:
     type: io.kestra.plugin.core.log.Log
     message: |
       Loaded {{ outputs.load_file.insertedCount + outputs.load_inline.insertedCount }} articles, rejected {{ outputs.load_inline.failedCount }}: {{ outputs.load_inline.errors[0].message }}
-      Batching: load_file {{ outputs.load_file.mode }}; load_inline {{ outputs.load_inline.mode }}, {{ outputs.load_inline.requestCount }} requests of {{ outputs.load_inline.batchSize }}, {{ outputs.load_inline.concurrentRequests }} in parallel; load_snippets {{ outputs.load_snippets.mode }}; load_team_a_notes {{ outputs.load_team_a_notes.mode }}
+      Batching: load_file {{ outputs.load_file.mode }}; load_inline {{ outputs.load_inline.mode }}, {{ outputs.load_inline.requestCount }} requests; load_snippets {{ outputs.load_snippets.mode }}; load_team_a_notes {{ outputs.load_team_a_notes.mode }}
       BM25 "data":
       {%- for row in outputs.bm25.rows %}
         {{ row.metadata.score | numberFormat('0.00') }} {{ row.properties.title }}

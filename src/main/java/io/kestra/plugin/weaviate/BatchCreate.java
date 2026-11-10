@@ -1,5 +1,6 @@
 package io.kestra.plugin.weaviate;
 
+import java.io.IOException;
 import java.net.URI;
 import java.time.*;
 import java.util.*;
@@ -7,6 +8,7 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.Semaphore;
+import java.util.concurrent.atomic.AtomicReference;
 
 import com.fasterxml.jackson.core.type.TypeReference;
 
@@ -27,6 +29,8 @@ import io.weaviate.client6.v1.api.collections.WeaviateObject;
 import io.weaviate.client6.v1.api.collections.batch.BatchContext;
 import io.weaviate.client6.v1.api.collections.batch.TaskHandle;
 import io.weaviate.client6.v1.api.collections.data.InsertManyResponse;
+import jakarta.validation.constraints.Max;
+import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.NotNull;
 import lombok.*;
 import lombok.experimental.SuperBuilder;
@@ -42,7 +46,8 @@ import reactor.core.publisher.Flux;
     description = """
         Loads objects into a collection over gRPC from a Kestra ION file or an inline list, in chunks of `batchSize`.
         Each object gets a generated UUID unless `uuidKey` is set. If the collection is missing, Weaviate auto-schema (if enabled) creates it.
-        By default the task fails when any object is rejected; set `failOnError: false` to report rejected objects in the output instead."""
+        By default the task fails when any object is rejected; set `failOnError: false` to report rejected objects in the output instead.
+        Since 2.1 the default `mode` is AUTO (server-side batching on Weaviate 1.36+); set `mode: FIXED_SIZE` for the 2.0 behavior of sequential `batchSize` requests."""
 )
 @Plugin(
     examples = {
@@ -181,6 +186,7 @@ public class BatchCreate extends WeaviateConnection implements RunnableTask<Batc
             DYNAMIC adapts the batch size to how long each request takes, starting from `batchSize`.
             FIXED_SIZE sends `batchSize` objects per request, `concurrentRequests` at a time.
             RATE_LIMIT sends at most `objectsPerMinute`, e.g. to stay under a vectorizer provider's rate limit.
+            Changed in 2.1: the default used to be sequential requests of `batchSize` objects; set `mode: FIXED_SIZE` to keep that behavior.
             See https://docs.weaviate.io/weaviate/manage-objects/import."""
     )
     @Builder.Default
@@ -190,16 +196,16 @@ public class BatchCreate extends WeaviateConnection implements RunnableTask<Batc
     @Schema(title = "Number of objects sent per request", description = "Between 1 and 10000.")
     @Builder.Default
     @PluginProperty(group = "advanced")
-    private Property<Integer> batchSize = Property.ofValue(500);
+    private Property<@Min(1) @Max(10_000) Integer> batchSize = Property.ofValue(500);
 
     @Schema(title = "Requests sent in parallel (FIXED_SIZE)", description = "Between 1 and 32.")
     @Builder.Default
     @PluginProperty(group = "advanced")
-    private Property<Integer> concurrentRequests = Property.ofValue(1);
+    private Property<@Min(1) @Max(32) Integer> concurrentRequests = Property.ofValue(1);
 
     @Schema(title = "Maximum objects sent per minute (RATE_LIMIT)", description = "Required with RATE_LIMIT.")
     @PluginProperty(group = "advanced")
-    private Property<Integer> objectsPerMinute;
+    private Property<@Min(1) Integer> objectsPerMinute;
 
     @Schema(
         title = "Fail when an object is rejected",
@@ -220,10 +226,10 @@ public class BatchCreate extends WeaviateConnection implements RunnableTask<Batc
         var rVectorKey = runContext.render(vectorKey).as(String.class).orElse(null);
         var rTargetVector = runContext.render(targetVector).as(String.class).orElse(null);
         var rTenant = runContext.render(tenant).as(String.class).orElse(null);
-        int rBatchSize = runContext.render(batchSize).as(Integer.class).orElse(500);
-        boolean rFailOnError = runContext.render(failOnError).as(Boolean.class).orElse(true);
+        var rBatchSize = runContext.render(batchSize).as(Integer.class).orElse(500);
+        var rFailOnError = runContext.render(failOnError).as(Boolean.class).orElse(true);
         var rMode = runContext.render(mode).as(BatchMode.class).orElse(BatchMode.AUTO);
-        int rConcurrentRequests = runContext.render(concurrentRequests).as(Integer.class).orElse(1);
+        var rConcurrentRequests = runContext.render(concurrentRequests).as(Integer.class).orElse(1);
         var rObjectsPerMinute = runContext.render(objectsPerMinute).as(Integer.class).orElse(null);
         validate(rMode, rBatchSize, rConcurrentRequests, rObjectsPerMinute);
 
@@ -277,6 +283,7 @@ public class BatchCreate extends WeaviateConnection implements RunnableTask<Batc
             }
         }
 
+        finishErrors(result);
         runContext.metric(Counter.of("records", result.inserted));
         runContext.metric(Counter.of("failed", result.failed));
         runContext.logger().info("Inserted {} objects into '{}', {} rejected", result.inserted, rClassName, result.failed);
@@ -293,8 +300,6 @@ public class BatchCreate extends WeaviateConnection implements RunnableTask<Batc
             .failedCount(result.failed)
             .errors(result.errors)
             .mode(result.mode)
-            .batchSize(rBatchSize)
-            .concurrentRequests(result.mode == BatchMode.FIXED_SIZE ? rConcurrentRequests : 1)
             .requestCount(result.mode == BatchMode.SERVER_SIDE ? null : result.requests)
             .build();
     }
@@ -306,13 +311,13 @@ public class BatchCreate extends WeaviateConnection implements RunnableTask<Batc
         try {
             var meta = client.meta();
             return supportsServerSide(meta.version()) && meta.grpcMaxMessageSize() != null ? BatchMode.SERVER_SIDE : BatchMode.DYNAMIC;
-        } catch (java.io.IOException | RuntimeException e) {
+        } catch (IOException | RuntimeException e) {
             return BatchMode.DYNAMIC;
         }
     }
 
     // client6 6.3.2 opens the stream on older servers too, and then waits forever for a reply that never comes.
-    private static void requireServerSide(WeaviateClient client) throws java.io.IOException {
+    private static void requireServerSide(WeaviateClient client) throws IOException {
         var version = client.meta().version();
         if (!supportsServerSide(version)) {
             throw new IllegalArgumentException(
@@ -327,8 +332,8 @@ public class BatchCreate extends WeaviateConnection implements RunnableTask<Batc
         }
         var parts = version.replaceFirst("^v", "").split("[.-]");
         try {
-            int major = Integer.parseInt(parts[0]);
-            int minor = parts.length > 1 ? Integer.parseInt(parts[1]) : 0;
+            var major = Integer.parseInt(parts[0]);
+            var minor = parts.length > 1 ? Integer.parseInt(parts[1]) : 0;
             return major > 1 || (major == 1 && minor >= 36);
         } catch (NumberFormatException e) {
             return false;
@@ -368,10 +373,7 @@ public class BatchCreate extends WeaviateConnection implements RunnableTask<Batc
         };
     }
 
-    /**
-     * When auto-schema has to create the collection, concurrent requests race to create it and Weaviate rejects the losers'
-     * objects ("class name ... already exists"). Sending the first object alone creates the collection exactly once.
-     */
+    /** Sends the first object alone when auto-schema must create the collection, so concurrent requests don't race to create it. */
     private static void deliver(Flux<Map<String, Object>> source, boolean primeAutoSchema, Sender sender, CollectionHandle<Map<String, Object>> collection,
         ObjectConverter converter, Result result) throws Exception {
         if (!primeAutoSchema) {
@@ -395,33 +397,43 @@ public class BatchCreate extends WeaviateConnection implements RunnableTask<Batc
     private static void sendFixedSize(Flux<Map<String, Object>> source, int batchSize, int concurrency, CollectionHandle<Map<String, Object>> collection,
         ObjectConverter converter, Result result) throws Exception {
         if (concurrency == 1) {
-            for (List<Map<String, Object>> chunk : source.buffer(batchSize).toIterable()) {
+            for (var chunk : source.buffer(batchSize).toIterable()) {
                 insertChunk(chunk, collection, converter, result);
             }
             return;
         }
-        // Chunks are converted in input order (so offsets are stable) and inserted in parallel, at most `concurrency` at once.
+        // Chunks are converted in input order (so offsets are stable) and inserted at most `concurrency` at once.
         var executor = Executors.newFixedThreadPool(concurrency);
         var permits = new Semaphore(concurrency);
         var futures = new ArrayList<Future<?>>();
+        var failure = new AtomicReference<Exception>();
         try {
-            for (List<Map<String, Object>> chunk : source.buffer(batchSize).toIterable()) {
-                var batch = toObjects(chunk, converter);
-                long offset;
-                synchronized (result) {
-                    offset = result.offset;
-                    result.offset += batch.size();
+            for (var chunk : source.buffer(batchSize).toIterable()) {
+                if (failure.get() != null) {
+                    break;
                 }
+                var batch = toObjects(chunk, converter);
+                var offset = reserve(result, batch.size());
                 permits.acquire();
+                if (failure.get() != null) {
+                    permits.release();
+                    break;
+                }
                 futures.add(executor.submit(() ->
                 {
                     try {
                         tally(collection.data.insertMany(batch), offset, result);
+                    } catch (Exception e) {
+                        failure.compareAndSet(null, e);
+                        throw e;
                     } finally {
                         permits.release();
                     }
                     return null;
                 }));
+            }
+            if (failure.get() != null) {
+                throw failure.get();
             }
             for (var future : futures) {
                 try {
@@ -433,8 +445,13 @@ public class BatchCreate extends WeaviateConnection implements RunnableTask<Batc
         } finally {
             executor.shutdownNow();
         }
+    }
+
+    private static long reserve(Result result, int size) {
         synchronized (result) {
-            result.errors.sort(java.util.Comparator.comparingLong(ObjectError::getIndex));
+            var offset = result.offset;
+            result.offset += size;
+            return offset;
         }
     }
 
@@ -456,10 +473,10 @@ public class BatchCreate extends WeaviateConnection implements RunnableTask<Batc
         ObjectConverter converter, Result result) {
         var size = initialSize;
         var buffer = new ArrayList<Map<String, Object>>(size);
-        for (Map<String, Object> map : source.toIterable()) {
+        for (var map : source.toIterable()) {
             buffer.add(map);
             if (buffer.size() >= size) {
-                long start = System.nanoTime();
+                var start = System.nanoTime();
                 insertChunk(buffer, collection, converter, result);
                 size = nextDynamicSize(size, System.nanoTime() - start);
                 buffer = new ArrayList<>(size);
@@ -472,12 +489,12 @@ public class BatchCreate extends WeaviateConnection implements RunnableTask<Batc
 
     private static void sendRateLimited(Flux<Map<String, Object>> source, int batchSize, int objectsPerMinute, CollectionHandle<Map<String, Object>> collection,
         ObjectConverter converter, Result result) throws InterruptedException {
-        long start = System.nanoTime();
-        long sent = 0;
-        for (List<Map<String, Object>> chunk : source.buffer(batchSize).toIterable()) {
+        var start = System.nanoTime();
+        var sent = 0L;
+        for (var chunk : source.buffer(batchSize).toIterable()) {
             // Wait until sending this chunk keeps the total at or under objectsPerMinute since the start.
-            long earliest = start + (long) (sent * 60_000_000_000.0 / objectsPerMinute);
-            long wait = earliest - System.nanoTime();
+            var earliest = start + (long) (sent * 60_000_000_000.0 / objectsPerMinute);
+            var wait = earliest - System.nanoTime();
             if (wait > 0) {
                 Thread.sleep(wait / 1_000_000, (int) (wait % 1_000_000));
             }
@@ -488,7 +505,7 @@ public class BatchCreate extends WeaviateConnection implements RunnableTask<Batc
 
     private static void sendServerSide(Flux<Map<String, Object>> source, int batchSize, CollectionHandle<Map<String, Object>> collection,
         ObjectConverter converter, Result result) throws Exception {
-        var pending = new java.util.ArrayDeque<PendingObject>();
+        var pending = new ArrayDeque<PendingObject>();
         BatchContext<Map<String, Object>> context;
         try {
             context = collection.batch.start(b -> b.batchSize(batchSize));
@@ -499,7 +516,7 @@ public class BatchCreate extends WeaviateConnection implements RunnableTask<Batc
             );
         }
         try (var batch = context) {
-            for (Map<String, Object> map : source.toIterable()) {
+            for (var map : source.toIterable()) {
                 var object = converter.toObject(map);
                 pending.add(new PendingObject(result.offset++, object.uuid(), batch.add(object)));
                 // Settle finished objects as we go, so memory stays bounded on large imports.
@@ -523,15 +540,13 @@ public class BatchCreate extends WeaviateConnection implements RunnableTask<Batc
         } catch (ExecutionException e) {
             var cause = e.getCause() == null ? e : e.getCause();
             result.failed++;
-            if (result.errors.size() < MAX_REPORTED_ERRORS) {
-                result.errors.add(new ObjectError(object.index(), object.uuid(), cause.getMessage()));
-            }
+            addError(result, new ObjectError(object.index(), object.uuid(), cause.getMessage()));
         }
     }
 
     private static List<WeaviateObject<Map<String, Object>>> toObjects(List<Map<String, Object>> chunk, ObjectConverter converter) {
         List<WeaviateObject<Map<String, Object>>> batch = new ArrayList<>(chunk.size());
-        for (Map<String, Object> map : chunk) {
+        for (var map : chunk) {
             batch.add(converter.toObject(map));
         }
         return batch;
@@ -548,17 +563,38 @@ public class BatchCreate extends WeaviateConnection implements RunnableTask<Batc
         var responses = response.responses();
         synchronized (result) {
             result.requests++;
-            for (int i = 0; i < responses.size(); i++) {
+            for (var i = 0; i < responses.size(); i++) {
                 var r = responses.get(i);
                 if (r.successful()) {
                     result.inserted++;
                 } else {
                     result.failed++;
-                    if (result.errors.size() < MAX_REPORTED_ERRORS) {
-                        result.errors.add(new ObjectError(offset + i, r.uuid(), r.error()));
-                    }
+                    addError(result, new ObjectError(offset + i, r.uuid(), r.error()));
                 }
             }
+        }
+    }
+
+    // Parallel requests finish out of order, so keep every error and trim to the lowest indexes now and then.
+    static void addError(Result result, ObjectError error) {
+        synchronized (result) {
+            result.errors.add(error);
+            if (result.errors.size() >= 2 * MAX_REPORTED_ERRORS) {
+                trimErrors(result);
+            }
+        }
+    }
+
+    static void finishErrors(Result result) {
+        synchronized (result) {
+            trimErrors(result);
+        }
+    }
+
+    private static void trimErrors(Result result) {
+        result.errors.sort(Comparator.comparingLong(ObjectError::getIndex));
+        if (result.errors.size() > MAX_REPORTED_ERRORS) {
+            result.errors.subList(MAX_REPORTED_ERRORS, result.errors.size()).clear();
         }
     }
 
@@ -619,7 +655,7 @@ public class BatchCreate extends WeaviateConnection implements RunnableTask<Batc
             }
             if (list.getFirst() instanceof List<?>) {
                 float[][] multi = new float[list.size()][];
-                for (int i = 0; i < list.size(); i++) {
+                for (var i = 0; i < list.size(); i++) {
                     if (!(list.get(i) instanceof List<?> row)) {
                         throw new IllegalArgumentException("Value of `" + vectorKey + "` mixes numbers and lists.");
                     }
@@ -633,7 +669,7 @@ public class BatchCreate extends WeaviateConnection implements RunnableTask<Batc
 
         private float[] toFloats(List<?> values) {
             float[] result = new float[values.size()];
-            for (int i = 0; i < values.size(); i++) {
+            for (var i = 0; i < values.size(); i++) {
                 if (!(values.get(i) instanceof Number n)) {
                     throw new IllegalArgumentException("Value of `" + vectorKey + "` must only contain numbers, got " + values.get(i));
                 }
@@ -688,12 +724,6 @@ public class BatchCreate extends WeaviateConnection implements RunnableTask<Batc
 
         @Schema(title = "Batching mode used", description = "With AUTO, the mode it resolved to: SERVER_SIDE or DYNAMIC.")
         private final BatchMode mode;
-
-        @Schema(title = "Objects per request", description = "The configured `batchSize`; the starting size for DYNAMIC and SERVER_SIDE.")
-        private final Integer batchSize;
-
-        @Schema(title = "Requests sent in parallel", description = "`concurrentRequests` for FIXED_SIZE, otherwise 1.")
-        private final Integer concurrentRequests;
 
         @Schema(title = "Insert requests sent", description = "Not reported for SERVER_SIDE, where Weaviate sets the batches.")
         private final Long requestCount;

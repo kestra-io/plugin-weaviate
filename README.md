@@ -80,6 +80,8 @@ This starts:
 - Weaviate 1.39.7: REST on `localhost:8080`, gRPC on `localhost:50051`.
 - Kestra with the plugin you just built: <http://localhost:8081>. Log in as `admin@kestra.io` with password `Admin1234`. Kestra takes about a minute to start.
 
+Both are reachable from this machine only (the ports are bound to `127.0.0.1`), and the credentials are for local use only.
+
 Both keep their data in Docker volumes, so it survives restarts. If you skip the Cohere key, flows that don't use a Cohere collection still work. To change the key, set it again and run `docker compose -f docker-compose-dev.yml up -d`, which recreates Kestra with the new value.
 
 ### 3. Run the example flow
