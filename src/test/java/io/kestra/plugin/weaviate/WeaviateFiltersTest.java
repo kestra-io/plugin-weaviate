@@ -258,7 +258,7 @@ class WeaviateFiltersTest {
         )) {
             assertThrows(IllegalArgumentException.class, () -> WeaviateFilters.condition(condition("location", Operator.WITHIN_GEO_RANGE, bad)), bad.toString());
         }
-        // Not build(): client6's Filter.toString() fails on geo ranges.
+        // Not build(): client6's Filter.toString() fails on geo ranges (weaviate/java-client#638).
         assertThat(WeaviateFilters.condition(condition("location", Operator.WITHIN_GEO_RANGE, Map.of("latitude", -90, "longitude", 180, "distance", 0))), notNullValue());
     }
 }
