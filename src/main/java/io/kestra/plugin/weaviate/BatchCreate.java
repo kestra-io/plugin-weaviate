@@ -49,7 +49,7 @@ import reactor.core.publisher.Flux;
         Loads objects into a collection over gRPC from a Kestra ION file or an inline list, in chunks of `batchSize`.
         Each object gets a generated UUID unless `uuidKey` is set. If the collection is missing, Weaviate auto-schema (if enabled) creates it.
         By default the task fails when any object is rejected; set `failOnError: false` to report rejected objects in the output instead.
-        Since 2.1 the default `mode` is AUTO (server-side batching on Weaviate 1.36+); set `mode: FIXED_SIZE` for the 2.0 behavior of sequential `batchSize` requests."""
+        After 2.0.0 the default `mode` is AUTO (server-side batching on Weaviate 1.36+); set `mode: FIXED_SIZE` for the 2.0.0 behavior of sequential `batchSize` requests."""
 )
 @Plugin(
     examples = {
@@ -188,7 +188,7 @@ public class BatchCreate extends WeaviateConnection implements RunnableTask<Batc
             DYNAMIC adapts the batch size to how long each request takes, starting from `batchSize`.
             FIXED_SIZE sends `batchSize` objects per request, `concurrentRequests` at a time.
             RATE_LIMIT sends at most `objectsPerMinute`, e.g. to stay under a vectorizer provider's rate limit.
-            Changed in 2.1: the default used to be sequential requests of `batchSize` objects; set `mode: FIXED_SIZE` to keep that behavior.
+            Changed after 2.0.0: the default used to be sequential requests of `batchSize` objects; set `mode: FIXED_SIZE` to keep that behavior.
             See https://docs.weaviate.io/weaviate/manage-objects/import."""
     )
     @Builder.Default

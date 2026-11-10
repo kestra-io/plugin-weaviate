@@ -76,7 +76,7 @@ Special properties:
 
 `BatchCreate.mode` sets how objects are sent to Weaviate:
 
-> **Changed in 2.1:** `mode` defaults to `AUTO`. Up to 2.0, `BatchCreate` always sent sequential requests of `batchSize` objects; set `mode: FIXED_SIZE` to keep that behavior.
+> **Changed after 2.0.0:** `mode` defaults to `AUTO`. Up to 2.0.0, `BatchCreate` always sent sequential requests of `batchSize` objects; set `mode: FIXED_SIZE` to keep that behavior.
 
 | `mode` | How it sends | Settings |
 |---|---|---|
