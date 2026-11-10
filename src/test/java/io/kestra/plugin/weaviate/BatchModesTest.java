@@ -171,7 +171,7 @@ public class BatchModesTest extends WeaviateTest {
     @Test
     public void autoUsesServerSideOnThisServer() throws Exception {
         try (var client = client()) {
-            assertThat(BatchCreate.autoMode(client), is(BatchMode.SERVER_SIDE));
+            assertThat(BatchCreate.autoMode(client, org.slf4j.LoggerFactory.getLogger(BatchModesTest.class)), is(BatchMode.SERVER_SIDE));
         }
         createSelfProvidedCollection(io.weaviate.client6.v1.api.collections.Property.integer("n"));
         RunContext runContext = runContextFactory.of();

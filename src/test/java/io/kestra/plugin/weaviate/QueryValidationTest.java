@@ -48,6 +48,7 @@ class QueryValidationTest {
             arguments(search(SearchType.FETCH_OBJECTS).distance(0.1), "`distance` is not supported"),
             arguments(search(SearchType.FETCH_OBJECTS).queryProperties(List.of("a")), "`queryProperties` is not supported"),
             arguments(search(SearchType.BM25), "`query` is required for searchType BM25"),
+            arguments(search(SearchType.NEAR_VECTOR).vector(java.util.Arrays.asList(0.1, null)), "`vector` must not contain null values"),
             arguments(search(SearchType.BM25).query("q").alpha(0.5), "`alpha` is not supported"),
             arguments(search(SearchType.BM25).query("q").certainty(0.5), "`certainty` is not supported"),
             arguments(search(SearchType.BM25).query("q").targetVector("v"), "`targetVector` is not supported"),

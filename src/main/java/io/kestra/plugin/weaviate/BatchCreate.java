@@ -21,6 +21,8 @@ import io.kestra.core.models.tasks.RunnableTask;
 import io.kestra.core.runners.RunContext;
 import io.kestra.core.serializers.FileSerde;
 
+import org.slf4j.Logger;
+
 import io.swagger.v3.oas.annotations.media.Schema;
 import io.weaviate.client6.v1.api.WeaviateClient;
 import io.weaviate.client6.v1.api.collections.CollectionHandle;
@@ -242,7 +244,7 @@ public class BatchCreate extends WeaviateConnection implements RunnableTask<Batc
                 collection = collection.withTenant(rTenant);
             }
             var target = collection;
-            var effectiveMode = rMode == BatchMode.AUTO ? autoMode(client) : rMode;
+            var effectiveMode = rMode == BatchMode.AUTO ? autoMode(client, runContext.logger()) : rMode;
             if (rMode == BatchMode.SERVER_SIDE) {
                 requireServerSide(client);
             }
@@ -307,11 +309,12 @@ public class BatchCreate extends WeaviateConnection implements RunnableTask<Batc
     static final String SERVER_SIDE_MIN_VERSION = "1.36";
 
     /** Server-side batching is GA from Weaviate 1.36; older servers, or ones that don't report a gRPC message size, use DYNAMIC. */
-    static BatchMode autoMode(WeaviateClient client) {
+    static BatchMode autoMode(WeaviateClient client, Logger logger) {
         try {
             var meta = client.meta();
             return supportsServerSide(meta.version()) && meta.grpcMaxMessageSize() != null ? BatchMode.SERVER_SIDE : BatchMode.DYNAMIC;
         } catch (IOException | RuntimeException e) {
+            logger.warn("Could not read the Weaviate version ({}); AUTO falls back to DYNAMIC", e.getMessage());
             return BatchMode.DYNAMIC;
         }
     }
@@ -363,7 +366,7 @@ public class BatchCreate extends WeaviateConnection implements RunnableTask<Batc
         return switch (mode) {
             case AUTO -> throw new IllegalStateException("AUTO is resolved before sending.");
             case DYNAMIC -> (source, collection, converter, result) -> sendDynamic(source, batchSize, collection, converter, result);
-            case FIXED_SIZE -> (source, collection, converter, result) -> sendFixedSize(source, batchSize, concurrentRequests, collection, converter, result);
+            case FIXED_SIZE -> (source, collection, converter, result) -> sendFixedSize(source, batchSize, concurrentRequests, collection.data::insertMany, converter, result);
             case RATE_LIMIT -> {
                 // A request never carries more than a minute's worth of objects, so the pace stays even.
                 var size = Math.min(batchSize, objectsPerMinute);
@@ -384,7 +387,7 @@ public class BatchCreate extends WeaviateConnection implements RunnableTask<Batc
         if (!iterator.hasNext()) {
             return;
         }
-        insertChunk(List.of(iterator.next()), collection, converter, result);
+        insertChunk(List.of(iterator.next()), collection.data::insertMany, converter, result);
         sender.send(Flux.fromIterable(() -> iterator), collection, converter, result);
     }
 
@@ -394,11 +397,16 @@ public class BatchCreate extends WeaviateConnection implements RunnableTask<Batc
             throws Exception;
     }
 
-    private static void sendFixedSize(Flux<Map<String, Object>> source, int batchSize, int concurrency, CollectionHandle<Map<String, Object>> collection,
-        ObjectConverter converter, Result result) throws Exception {
+    @FunctionalInterface
+    interface Inserter {
+        InsertManyResponse insert(List<WeaviateObject<Map<String, Object>>> batch);
+    }
+
+    static void sendFixedSize(Flux<Map<String, Object>> source, int batchSize, int concurrency, Inserter inserter, ObjectConverter converter, Result result)
+        throws Exception {
         if (concurrency == 1) {
             for (var chunk : source.buffer(batchSize).toIterable()) {
-                insertChunk(chunk, collection, converter, result);
+                insertChunk(chunk, inserter, converter, result);
             }
             return;
         }
@@ -412,6 +420,7 @@ public class BatchCreate extends WeaviateConnection implements RunnableTask<Batc
                 if (failure.get() != null) {
                     break;
                 }
+                awaitAll(futures, true);
                 var batch = toObjects(chunk, converter);
                 var offset = reserve(result, batch.size());
                 permits.acquire();
@@ -422,7 +431,7 @@ public class BatchCreate extends WeaviateConnection implements RunnableTask<Batc
                 futures.add(executor.submit(() ->
                 {
                     try {
-                        tally(collection.data.insertMany(batch), offset, result);
+                        tally(inserter.insert(batch), offset, result);
                     } catch (Exception e) {
                         failure.compareAndSet(null, e);
                         throw e;
@@ -435,15 +444,26 @@ public class BatchCreate extends WeaviateConnection implements RunnableTask<Batc
             if (failure.get() != null) {
                 throw failure.get();
             }
-            for (var future : futures) {
-                try {
-                    future.get();
-                } catch (ExecutionException e) {
-                    throw e.getCause() instanceof Exception cause ? cause : e;
-                }
-            }
+            awaitAll(futures, false);
         } finally {
             executor.shutdownNow();
+        }
+    }
+
+    // Drops the futures it has waited for, so only in-flight requests stay referenced on large imports.
+    private static void awaitAll(List<Future<?>> futures, boolean onlyDone) throws Exception {
+        var iterator = futures.iterator();
+        while (iterator.hasNext()) {
+            var future = iterator.next();
+            if (onlyDone && !future.isDone()) {
+                continue;
+            }
+            try {
+                future.get();
+            } catch (ExecutionException e) {
+                throw e.getCause() instanceof Exception cause ? cause : e;
+            }
+            iterator.remove();
         }
     }
 
@@ -477,13 +497,13 @@ public class BatchCreate extends WeaviateConnection implements RunnableTask<Batc
             buffer.add(map);
             if (buffer.size() >= size) {
                 var start = System.nanoTime();
-                insertChunk(buffer, collection, converter, result);
+                insertChunk(buffer, collection.data::insertMany, converter, result);
                 size = nextDynamicSize(size, System.nanoTime() - start);
                 buffer = new ArrayList<>(size);
             }
         }
         if (!buffer.isEmpty()) {
-            insertChunk(buffer, collection, converter, result);
+            insertChunk(buffer, collection.data::insertMany, converter, result);
         }
     }
 
@@ -498,7 +518,7 @@ public class BatchCreate extends WeaviateConnection implements RunnableTask<Batc
             if (wait > 0) {
                 Thread.sleep(wait / 1_000_000, (int) (wait % 1_000_000));
             }
-            insertChunk(chunk, collection, converter, result);
+            insertChunk(chunk, collection.data::insertMany, converter, result);
             sent += chunk.size();
         }
     }
@@ -552,10 +572,9 @@ public class BatchCreate extends WeaviateConnection implements RunnableTask<Batc
         return batch;
     }
 
-    private static void insertChunk(List<Map<String, Object>> chunk, CollectionHandle<Map<String, Object>> collection, ObjectConverter converter,
-        Result result) {
+    private static void insertChunk(List<Map<String, Object>> chunk, Inserter inserter, ObjectConverter converter, Result result) {
         var batch = toObjects(chunk, converter);
-        tally(collection.data.insertMany(batch), result.offset, result);
+        tally(inserter.insert(batch), result.offset, result);
         result.offset += batch.size();
     }
 

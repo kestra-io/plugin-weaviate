@@ -121,4 +121,26 @@ public class SchemaCreateTest extends WeaviateTest {
         assertThat(output.getSuccess(), is(true));
         assertThat(output.getCreated(), is(false));
     }
+
+    @Test
+    public void rejectsAnEmptyVectorizePropertiesList() {
+        RunContext runContext = runContextFactory.of();
+
+        var withVectorizer = assertThrows(
+            IllegalArgumentException.class,
+            () -> schemaCreate()
+                .fields(Property.ofValue(Map.of("title", "text")))
+                .vectorizer(Property.ofValue(SchemaCreate.Vectorizer.TEXT2VEC_MODEL2VEC))
+                .vectorizeProperties(Property.ofValue(List.of()))
+                .build()
+                .run(runContext)
+        );
+        assertThat(withVectorizer.getMessage(), containsString("must list at least one property"));
+
+        var withoutVectorizer = assertThrows(
+            IllegalArgumentException.class,
+            () -> schemaCreate().fields(Property.ofValue(Map.of("title", "text"))).vectorizeProperties(Property.ofValue(List.of("title"))).build().run(runContext)
+        );
+        assertThat(withoutVectorizer.getMessage(), containsString("needs a vectorizer"));
+    }
 }

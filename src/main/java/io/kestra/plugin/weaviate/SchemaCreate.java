@@ -313,7 +313,7 @@ public class SchemaCreate extends WeaviateConnection implements RunnableTask<Sch
             runContext.render(vectorizer).as(Vectorizer.class).orElse(Vectorizer.NONE),
             runContext.render(vectorizerModel).as(String.class).orElse(null),
             runContext.render(vectorName).as(String.class).orElse(null),
-            rVectorizeProperties.isEmpty() ? null : rVectorizeProperties,
+            vectorizeProperties == null ? null : rVectorizeProperties,
             buildQuantization(runContext.render(quantization).as(QuantizationOptions.class).orElse(null))
         );
         boolean rSkipIfExists = runContext.render(skipIfExists).as(Boolean.class).orElse(false);
@@ -381,6 +381,9 @@ public class SchemaCreate extends WeaviateConnection implements RunnableTask<Sch
             throw new IllegalArgumentException("`definition` must name the collection in `class`, or set `className`.");
         }
         var tenantNames = tenantNames(rMultiTenancy);
+        if (!tenantNames.isEmpty() && !multiTenancyEnabled(document)) {
+            throw new IllegalArgumentException("`multiTenancy.tenants` needs `multiTenancyConfig: {enabled: true}` in the definition.");
+        }
 
         try (WeaviateClient client = connect(runContext)) {
             var existed = client.collections.exists(rClassName);
@@ -396,6 +399,10 @@ public class SchemaCreate extends WeaviateConnection implements RunnableTask<Sch
             var added = createMissingTenants(client, rClassName, tenantNames);
             return Output.builder().success(true).created(!existed).tenantsCreated(added).build();
         }
+    }
+
+    static boolean multiTenancyEnabled(Map<?, ?> definition) {
+        return definition.get("multiTenancyConfig") instanceof Map<?, ?> config && Boolean.parseBoolean(String.valueOf(config.get("enabled")));
     }
 
     static List<String> tenantNames(MultiTenancyOptions options) {
@@ -708,6 +715,12 @@ public class SchemaCreate extends WeaviateConnection implements RunnableTask<Sch
         allowed(type, "bits", options.getBits(), QuantizationType.RQ);
         allowed(type, "segments", options.getSegments(), QuantizationType.PQ);
         allowed(type, "centroids", options.getCentroids(), QuantizationType.PQ);
+        if (options.getCentroids() != null && (options.getCentroids() < 1 || options.getCentroids() > 256)) {
+            throw new IllegalArgumentException("`quantization.centroids` must be between 1 and 256, got " + options.getCentroids() + ".");
+        }
+        if (options.getSegments() != null && options.getSegments() < 0) {
+            throw new IllegalArgumentException("`quantization.segments` must be 0 or more, got " + options.getSegments() + ".");
+        }
         if (options.getBits() != null && options.getBits() != 1 && options.getBits() != 8) {
             throw new IllegalArgumentException("`quantization.bits` must be 8 or 1, got " + options.getBits() + ".");
         }

@@ -63,7 +63,8 @@ final class WeaviateFilters {
         }
         try {
             var normalized = normalize(value, null);
-            var operator = normalized instanceof String ? FilterCondition.Operator.LIKE : FilterCondition.Operator.EQUAL;
+            var special = property.equals(ID_PROPERTY) || property.equals(CREATION_TIME_PROPERTY) || property.equals(LAST_UPDATE_TIME_PROPERTY);
+            var operator = normalized instanceof String && !special ? FilterCondition.Operator.LIKE : FilterCondition.Operator.EQUAL;
             return condition(property, operator, normalized);
         } catch (IllegalArgumentException e) {
             throw new IllegalArgumentException("Invalid `filter` entry '" + property + "': " + e.getMessage(), e);
@@ -129,20 +130,25 @@ final class WeaviateFilters {
         if (!(value instanceof Map<?, ?> map)) {
             throw new IllegalArgumentException("WITHIN_GEO_RANGE on '" + property + "' needs a map with `latitude`, `longitude` and `distance`, got " + describe(value) + ".");
         }
-        return Filter.property(property).withinGeoRange(
-            geoNumber(property, map, "latitude"),
-            geoNumber(property, map, "longitude"),
-            geoNumber(property, map, "distance")
-        );
+        var latitude = geoNumber(property, map, "latitude");
+        var longitude = geoNumber(property, map, "longitude");
+        var distance = geoNumber(property, map, "distance");
+        if (latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180 || distance < 0) {
+            throw new IllegalArgumentException(
+                "WITHIN_GEO_RANGE on '" + property + "' needs a latitude in [-90, 90], a longitude in [-180, 180] and a distance of at least 0, got " + describe(value) + "."
+            );
+        }
+        return Filter.property(property).withinGeoRange(latitude, longitude, distance);
     }
 
     private static float geoNumber(String property, Map<?, ?> map, String key) {
         var value = map.get(key);
-        if (value instanceof Number number) {
-            return number.floatValue();
-        }
         try {
-            return Float.parseFloat(String.valueOf(value));
+            var number = value instanceof Number n ? n.floatValue() : Float.parseFloat(String.valueOf(value));
+            if (!Float.isFinite(number)) {
+                throw new NumberFormatException();
+            }
+            return number;
         } catch (NumberFormatException e) {
             throw new IllegalArgumentException("WITHIN_GEO_RANGE on '" + property + "' needs a number for `" + key + "`, got " + describe(value) + ".");
         }
@@ -292,6 +298,9 @@ final class WeaviateFilters {
         if (value instanceof List<?> list) {
             if (list.isEmpty()) {
                 throw new IllegalArgumentException("list values must not be empty.");
+            }
+            if (list.stream().anyMatch(java.util.Objects::isNull)) {
+                throw new IllegalArgumentException("list values must not be null, got " + describe(value) + ".");
             }
             var normalized = list.stream().map(v -> normalize(v, type)).toList();
             // YAML writes [1, 2.5] as Integer and Double; treat such a list as numbers rather than rejecting it.

@@ -265,7 +265,9 @@ public class Query extends WeaviateConnection implements RunnableTask<FetchOutpu
 
     @Schema(
         title = "Simple property filter",
-        description = "Map of property to value, combined with AND. Text values use LIKE (so `*` wildcards work); other values use EQUAL."
+        description = """
+            Map of property to value, combined with AND. Text values use LIKE (so `*` wildcards work); other values, and `_id` and the timestamp properties, use EQUAL.
+            Templated values arrive as text: for a templated number, boolean or date, use `filters` with `valueType`."""
     )
     @PluginProperty(group = "processing")
     private Property<Map<String, Object>> filter;
@@ -422,6 +424,9 @@ public class Query extends WeaviateConnection implements RunnableTask<FetchOutpu
                 );
             }
             boolean hasQuery = query != null && !query.isBlank();
+            if (vector != null && vector.stream().anyMatch(java.util.Objects::isNull)) {
+                throw new IllegalArgumentException("`vector` must not contain null values.");
+            }
             boolean hasVector = vector != null && !vector.isEmpty();
             boolean hasQueryProperties = queryProperties != null && !queryProperties.isEmpty();
 

@@ -152,6 +152,64 @@ public class SchemaDefinitionTest extends WeaviateTest {
         assertThat(rejected.getMessage(), containsString("notAType"));
     }
 
+    @Test
+    public void rejectsEveryPropertyThatTheDefinitionReplaces() {
+        RunContext runContext = runContextFactory.of();
+        Map<String, java.util.function.UnaryOperator<SchemaCreate.SchemaCreateBuilder<?, ?>>> conflicts = Map.of(
+            "vectorizerModel", b -> b.vectorizerModel(Property.ofValue("m")),
+            "vectorizeProperties", b -> b.vectorizeProperties(Property.ofValue(List.of("a"))),
+            "vectorName", b -> b.vectorName(Property.ofValue("v")),
+            "quantization", b -> b.quantization(Property.ofValue(SchemaCreate.QuantizationOptions.builder().type(SchemaCreate.QuantizationType.BQ).build())),
+            "invertedIndex", b -> b.invertedIndex(Property.ofValue(SchemaCreate.InvertedIndexOptions.builder().build())),
+            "vectorizer", b -> b.vectorizer(Property.ofValue(SchemaCreate.Vectorizer.TEXT2VEC_MODEL2VEC)),
+            "multiTenancy", b -> b.multiTenancy(Property.ofValue(SchemaCreate.MultiTenancyOptions.builder().enabled(true).build()))
+        );
+
+        conflicts.forEach((name, set) ->
+        {
+            var e = assertThrows(
+                IllegalArgumentException.class,
+                () -> set.apply(schemaCreate().definition(Property.ofValue(Map.of("class", CLASS_NAME)))).build().run(runContext),
+                name
+            );
+            assertThat(e.getMessage(), containsString("remove " + name));
+        });
+    }
+
+    @Test
+    public void rejectsTenantsWithoutMultiTenancyBeforeCreatingAnything() throws Exception {
+        RunContext runContext = runContextFactory.of();
+
+        var e = assertThrows(
+            IllegalArgumentException.class,
+            () -> schemaCreate()
+                .definition(Property.ofValue(Map.of("class", CLASS_NAME, "properties", List.of(Map.of("name", "a", "dataType", List.of("text"))))))
+                .multiTenancy(Property.ofValue(MultiTenancyOptions.builder().tenants(List.of("acme")).build()))
+                .build()
+                .run(runContext)
+        );
+
+        assertThat(e.getMessage(), containsString("multiTenancyConfig"));
+        try (var client = client()) {
+            assertThat(client.collections.exists(CLASS_NAME), is(false));
+        }
+    }
+
+    @Test
+    public void failsOnAnExistingCollectionUnlessSkipped() throws Exception {
+        RunContext runContext = runContextFactory.of();
+        createSelfProvidedCollection(io.weaviate.client6.v1.api.collections.Property.text("a"));
+
+        var e = assertThrows(
+            IllegalStateException.class,
+            () -> schemaCreate().definition(Property.ofValue(Map.of("class", CLASS_NAME))).build().run(runContext)
+        );
+        assertThat(e.getMessage(), containsString("already exists; set `skipIfExists: true`"));
+
+        var skipped = schemaCreate().definition(Property.ofValue(Map.of("class", CLASS_NAME))).skipIfExists(Property.ofValue(true)).build().run(runContext);
+        assertThat(skipped.getCreated(), is(false));
+    }
+
     private static JsonNode schema(String name) throws Exception {
         var response = HttpClient.newHttpClient().send(HttpRequest.newBuilder(URI.create(URL + "/v1/schema/" + name)).build(), HttpResponse.BodyHandlers.ofString());
         return response.statusCode() == 404 ? new ObjectMapper().createObjectNode() : new ObjectMapper().readTree(response.body());

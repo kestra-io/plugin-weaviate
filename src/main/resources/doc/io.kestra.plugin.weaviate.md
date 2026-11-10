@@ -52,7 +52,7 @@ Each result row is `{uuid, properties, metadata, vector?, vectors?}`. Request me
 
 `Query` and `Delete` accept two filter forms, which can be combined (both must match):
 
-- `filter`: a map of property to value, combined with AND. Text values use `LIKE`, so `*` wildcards work; other values use `EQUAL`.
+- `filter`: a map of property to value, combined with AND. Text values use `LIKE`, so `*` wildcards work; other values, and `_id`, `_creationTimeUnix` and `_lastUpdateTimeUnix`, use `EQUAL`. A templated value such as `"{{ inputs.n }}"` arrives as text, so for a templated number, boolean or date use `filters` with `valueType`.
 - `filters`: a list of `{property, operator, value, valueType}` conditions, combined with `filtersOperator` (`AND` or `OR`). Set `valueType: DATE` or `UUID` for dates and UUIDs written as strings.
 
   An entry can also be a group: `and` or `or` with a list of conditions, or `not` with one condition. Groups nest, as in the `curated` task of the example below.

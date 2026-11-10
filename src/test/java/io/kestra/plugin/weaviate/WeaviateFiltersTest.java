@@ -228,4 +228,37 @@ class WeaviateFiltersTest {
         var missing = condition("location", Operator.WITHIN_GEO_RANGE, Map.of("latitude", 1, "longitude", 2));
         assertThat(assertThrows(IllegalArgumentException.class, () -> build(missing)).getMessage(), containsString("number for `distance`"));
     }
+
+    @Test
+    void simpleMapUsesEqualOnIdAndTimestamps() {
+        var id = "0b9e8a4a-3b1c-4c1e-9f7a-1c2d3e4f5a6b";
+
+        assertThat(WeaviateFilters.build(Map.of("_id", id), null, null).toString(), is("Filter(_id Equal " + id + ")"));
+        assertThat(WeaviateFilters.build(Map.of("_creationTimeUnix", "2024-01-01T00:00:00Z"), null, null).toString(), containsString("Equal"));
+        assertThat(WeaviateFilters.build(Map.of("_lastUpdateTimeUnix", "2024-01-01T00:00:00Z"), null, null).toString(), containsString("Equal"));
+    }
+
+    @Test
+    void rejectsNullListElements() {
+        var structured = assertThrows(IllegalArgumentException.class, () -> build(condition("tags", Operator.CONTAINS_ANY, java.util.Arrays.asList("a", null))));
+        assertThat(structured.getMessage(), allOf(containsString("filters[0]"), containsString("must not be null")));
+
+        var simple = assertThrows(IllegalArgumentException.class, () -> WeaviateFilters.build(Map.of("tags", java.util.Arrays.asList((Object) null)), null, null));
+        assertThat(simple.getMessage(), allOf(containsString("'tags'"), containsString("must not be null")));
+    }
+
+    @Test
+    void rejectsGeoRangesOutsideTheGlobe() {
+        for (var bad : List.<Map<String, Object>> of(
+            Map.of("latitude", 91, "longitude", 0, "distance", 10),
+            Map.of("latitude", 0, "longitude", -181, "distance", 10),
+            Map.of("latitude", 0, "longitude", 0, "distance", -1),
+            Map.of("latitude", "NaN", "longitude", 0, "distance", 10),
+            Map.of("latitude", 0, "longitude", "Infinity", "distance", 10)
+        )) {
+            assertThrows(IllegalArgumentException.class, () -> WeaviateFilters.condition(condition("location", Operator.WITHIN_GEO_RANGE, bad)), bad.toString());
+        }
+        // Not build(): client6's Filter.toString() fails on geo ranges.
+        assertThat(WeaviateFilters.condition(condition("location", Operator.WITHIN_GEO_RANGE, Map.of("latitude", -90, "longitude", 180, "distance", 0))), notNullValue());
+    }
 }

@@ -6,8 +6,10 @@ import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
+import org.junit.jupiter.params.provider.EnumSource;
 
 import io.weaviate.client6.v1.api.collections.Property;
+import io.weaviate.client6.v1.api.collections.Quantization;
 import io.weaviate.client6.v1.api.collections.vectorizers.SelfProvidedVectorizer;
 import io.weaviate.client6.v1.api.collections.vectorizers.Text2VecCohereVectorizer;
 import io.weaviate.client6.v1.api.collections.vectorizers.Text2VecModel2VecVectorizer;
@@ -180,5 +182,72 @@ class SchemaTypeMappingTest {
         assertThat(((Text2VecCohereVectorizer) sourced.getValue()).model(), is("embed-v4.0"));
         assertThrows(IllegalArgumentException.class, () -> SchemaCreate.buildVectorConfig(SchemaCreate.Vectorizer.NONE, null, null, List.of("title"), null));
         assertThrows(IllegalArgumentException.class, () -> SchemaCreate.buildVectorConfig(SchemaCreate.Vectorizer.TEXT2VEC_COHERE, null, null, List.of(), null));
+    }
+
+    @ParameterizedTest
+    @EnumSource(value = SchemaCreate.Vectorizer.class, names = "NONE", mode = EnumSource.Mode.EXCLUDE)
+    void everyVectorizerKeepsSourcePropertiesAndQuantization(SchemaCreate.Vectorizer vectorizer) throws Exception {
+        var rq = SchemaCreate.buildQuantization(SchemaCreate.QuantizationOptions.builder().type(SchemaCreate.QuantizationType.RQ).build());
+
+        var config = SchemaCreate.buildVectorConfig(vectorizer, null, "body", List.of("title"), rq).getValue();
+
+        assertThat(((Quantization) config.getClass().getMethod("quantization").invoke(config)).isRQ(), is(true));
+        assertThat(config.getClass().getMethod("sourceProperties").invoke(config), is(List.of("title")));
+    }
+
+    @Test
+    void rejectsEmptyTenantNamesAndTenantsWithoutMultiTenancy() {
+        var empty = assertThrows(
+            IllegalArgumentException.class,
+            () -> SchemaCreate.tenantNames(SchemaCreate.MultiTenancyOptions.builder().tenants(java.util.Arrays.asList("a", " ")).build())
+        );
+        assertThat(empty.getMessage(), containsString("must not contain empty names"));
+
+        var disabled = assertThrows(
+            IllegalArgumentException.class,
+            () -> SchemaCreate.tenantNames(SchemaCreate.MultiTenancyOptions.builder().enabled(false).tenants(List.of("a")).build())
+        );
+        assertThat(disabled.getMessage(), containsString("remove `enabled: false`"));
+
+        assertThat(SchemaCreate.tenantNames(SchemaCreate.MultiTenancyOptions.builder().tenants(List.of("a", "b", "a")).build()), is(List.of("a", "b")));
+        assertThat(SchemaCreate.tenantNames(null), is(List.of()));
+    }
+
+    @Test
+    void validatesTextAnalyzerShapes() {
+        var notAMap = assertThrows(IllegalArgumentException.class, () -> SchemaCreate.buildProperty("p", Map.of("type", "text", "textAnalyzer", "ascii"), null));
+        assertThat(notAMap.getMessage(), containsString("`textAnalyzer` must be a map"));
+
+        var keepNotList = assertThrows(
+            IllegalArgumentException.class,
+            () -> SchemaCreate.buildProperty("p", Map.of("type", "text", "textAnalyzer", Map.of("keepAscii", "é")), null)
+        );
+        assertThat(keepNotList.getMessage(), containsString("`textAnalyzer.keepAscii` must be a list"));
+
+        var preset = SchemaCreate.buildProperty("p", Map.of("type", "text", "textAnalyzer", Map.of("stopwordPreset", "en")), null);
+        assertThat(preset.textAnalyzer().stopwordPreset(), is("en"));
+    }
+
+    @Test
+    void validatesPqSettings() {
+        for (var bad : List.of(
+            SchemaCreate.QuantizationOptions.builder().type(SchemaCreate.QuantizationType.PQ).centroids(257).build(),
+            SchemaCreate.QuantizationOptions.builder().type(SchemaCreate.QuantizationType.PQ).centroids(0).build(),
+            SchemaCreate.QuantizationOptions.builder().type(SchemaCreate.QuantizationType.PQ).segments(-1).build(),
+            SchemaCreate.QuantizationOptions.builder().type(SchemaCreate.QuantizationType.SQ).segments(4).build(),
+            SchemaCreate.QuantizationOptions.builder().type(SchemaCreate.QuantizationType.RQ).centroids(256).build()
+        )) {
+            assertThrows(IllegalArgumentException.class, () -> SchemaCreate.buildQuantization(bad), bad.toString());
+        }
+        var pq = SchemaCreate.buildQuantization(SchemaCreate.QuantizationOptions.builder().type(SchemaCreate.QuantizationType.PQ).segments(0).centroids(256).build());
+        assertThat(pq.isPQ(), is(true));
+    }
+
+    @Test
+    void detectsMultiTenancyInADefinition() {
+        assertThat(SchemaCreate.multiTenancyEnabled(Map.of("multiTenancyConfig", Map.of("enabled", true))), is(true));
+        assertThat(SchemaCreate.multiTenancyEnabled(Map.of("multiTenancyConfig", Map.of("enabled", "true"))), is(true));
+        assertThat(SchemaCreate.multiTenancyEnabled(Map.of("multiTenancyConfig", Map.of("enabled", false))), is(false));
+        assertThat(SchemaCreate.multiTenancyEnabled(Map.of("class", "X")), is(false));
     }
 }
