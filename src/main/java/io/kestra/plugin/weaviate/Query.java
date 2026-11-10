@@ -500,7 +500,6 @@ public class Query extends WeaviateConnection implements RunnableTask<FetchOutpu
             }
         }
 
-        // FETCH_OBJECTS and BM25 use no vector, so `targetVector` can only pick which vector to return.
         private void requireIncludeVectorForTarget() {
             if (targetVector != null && !includeVector) {
                 throw new IllegalArgumentException("`targetVector` with searchType " + searchType + " only selects the returned vector; set `includeVector: true`.");

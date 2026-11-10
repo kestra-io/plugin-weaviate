@@ -308,7 +308,6 @@ public class BatchCreate extends WeaviateConnection implements RunnableTask<Batc
 
     static final String SERVER_SIDE_MIN_VERSION = "1.36";
 
-    /** Server-side batching is GA from Weaviate 1.36; older servers, or ones that don't report a gRPC message size, use DYNAMIC. */
     static BatchMode autoMode(WeaviateClient client, Logger logger) {
         try {
             var meta = client.meta();
@@ -368,7 +367,6 @@ public class BatchCreate extends WeaviateConnection implements RunnableTask<Batc
             case DYNAMIC -> (source, collection, converter, result) -> sendDynamic(source, batchSize, collection, converter, result);
             case FIXED_SIZE -> (source, collection, converter, result) -> sendFixedSize(source, batchSize, concurrentRequests, collection.data::insertMany, converter, result);
             case RATE_LIMIT -> {
-                // A request never carries more than a minute's worth of objects, so the pace stays even.
                 var size = Math.min(batchSize, objectsPerMinute);
                 yield (source, collection, converter, result) -> sendRateLimited(source, size, objectsPerMinute, collection, converter, result);
             }
@@ -376,7 +374,6 @@ public class BatchCreate extends WeaviateConnection implements RunnableTask<Batc
         };
     }
 
-    /** Sends the first object alone when auto-schema must create the collection, so concurrent requests don't race to create it. */
     private static void deliver(Flux<Map<String, Object>> source, boolean primeAutoSchema, Sender sender, CollectionHandle<Map<String, Object>> collection,
         ObjectConverter converter, Result result) throws Exception {
         if (!primeAutoSchema) {
@@ -410,7 +407,6 @@ public class BatchCreate extends WeaviateConnection implements RunnableTask<Batc
             }
             return;
         }
-        // Chunks are converted in input order (so offsets are stable) and inserted at most `concurrency` at once.
         var executor = Executors.newFixedThreadPool(concurrency);
         var permits = new Semaphore(concurrency);
         var futures = new ArrayList<Future<?>>();
@@ -450,7 +446,6 @@ public class BatchCreate extends WeaviateConnection implements RunnableTask<Batc
         }
     }
 
-    // Drops the futures it has waited for, so only in-flight requests stay referenced on large imports.
     private static void awaitAll(List<Future<?>> futures, boolean onlyDone) throws Exception {
         var iterator = futures.iterator();
         while (iterator.hasNext()) {
@@ -478,7 +473,6 @@ public class BatchCreate extends WeaviateConnection implements RunnableTask<Batc
     static final long DYNAMIC_FAST_NANOS = 1_000_000_000L;
     static final long DYNAMIC_SLOW_NANOS = 5_000_000_000L;
 
-    /** Doubles the batch size after a request under 1 s and halves it after one over 5 s, between 1 and 10000. */
     static int nextDynamicSize(int size, long elapsedNanos) {
         if (elapsedNanos < DYNAMIC_FAST_NANOS) {
             return Math.min(size * 2, 10_000);
@@ -512,7 +506,6 @@ public class BatchCreate extends WeaviateConnection implements RunnableTask<Batc
         var start = System.nanoTime();
         var sent = 0L;
         for (var chunk : source.buffer(batchSize).toIterable()) {
-            // Wait until sending this chunk keeps the total at or under objectsPerMinute since the start.
             var earliest = start + (long) (sent * 60_000_000_000.0 / objectsPerMinute);
             var wait = earliest - System.nanoTime();
             if (wait > 0) {
@@ -539,7 +532,6 @@ public class BatchCreate extends WeaviateConnection implements RunnableTask<Batc
             for (var map : source.toIterable()) {
                 var object = converter.toObject(map);
                 pending.add(new PendingObject(result.offset++, object.uuid(), batch.add(object)));
-                // Settle finished objects as we go, so memory stays bounded on large imports.
                 while (!pending.isEmpty() && pending.peek().handle().done().isDone()) {
                     settle(pending.poll(), result);
                 }
@@ -594,7 +586,6 @@ public class BatchCreate extends WeaviateConnection implements RunnableTask<Batc
         }
     }
 
-    // Parallel requests finish out of order, so keep every error and trim to the lowest indexes now and then.
     static void addError(Result result, ObjectError error) {
         synchronized (result) {
             result.errors.add(error);
