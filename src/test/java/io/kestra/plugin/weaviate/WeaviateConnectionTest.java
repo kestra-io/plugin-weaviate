@@ -12,6 +12,12 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class WeaviateConnectionTest {
     @Test
+    void truncatesLongErrorBodies() {
+        assertThat(WeaviateConnection.truncate("short", 10), is("short"));
+        assertThat(WeaviateConnection.truncate("x".repeat(15), 10), is("x".repeat(10) + "... (5 more characters)"));
+    }
+
+    @Test
     void addsIntegrationHeader() {
         Map<String, String> headers = WeaviateConnection.buildHeaders(null);
 

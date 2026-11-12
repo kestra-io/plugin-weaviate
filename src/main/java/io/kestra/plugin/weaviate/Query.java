@@ -158,6 +158,37 @@ import reactor.core.publisher.Flux;
                     includeVector: true
                     fetchType: FETCH
                 """
+        ),
+        @Example(
+            title = "Range filters: orders from the last 7 days with a total between 100 and 500.",
+            full = true,
+            code = """
+                id: weaviate_range_filter
+                namespace: company.team
+
+                tasks:
+                  - id: recent_mid_size_orders
+                    type: io.kestra.plugin.weaviate.Query
+                    url: http://localhost:8080
+                    className: Order
+                    filters:
+                      - property: createdAt
+                        operator: GREATER_THAN_EQUAL
+                        value: "{{ now() | dateAdd(-7, 'DAYS') }}"
+                        valueType: DATE
+                      - property: total
+                        operator: GREATER_THAN_EQUAL
+                        value: 100
+                      - property: total
+                        operator: LESS_THAN_EQUAL
+                        value: 500
+                    returnProperties:
+                      - orderId
+                      - total
+                      - createdAt
+                    limit: 100
+                    fetchType: FETCH
+                """
         )
     }
 )
@@ -198,8 +229,10 @@ public class Query extends WeaviateConnection implements RunnableTask<FetchOutpu
     private Property<Double> alpha;
 
     @Schema(
-        title = "Named vector to search",
-        description = "For collections with named vectors: the vector used by NEAR_TEXT, NEAR_VECTOR and HYBRID."
+        title = "Named vector to search or return",
+        description = """
+            For collections with named vectors: the vector used by NEAR_TEXT, NEAR_VECTOR and HYBRID.
+            With `includeVector`, also the only vector returned. FETCH_OBJECTS and BM25 accept it only with `includeVector`."""
     )
     @PluginProperty(group = "processing")
     private Property<String> targetVector;
@@ -234,7 +267,9 @@ public class Query extends WeaviateConnection implements RunnableTask<FetchOutpu
 
     @Schema(
         title = "Simple property filter",
-        description = "Map of property to value, combined with AND. Text values use LIKE (so `*` wildcards work); other values use EQUAL."
+        description = """
+            Map of property to value, combined with AND. Text values use LIKE (so `*` wildcards work); other values, and `_id` and the timestamp properties, use EQUAL.
+            Templated values arrive as text: for a templated number, boolean or date, use `filters` with `valueType`."""
     )
     @PluginProperty(group = "processing")
     private Property<Map<String, Object>> filter;
@@ -259,7 +294,7 @@ public class Query extends WeaviateConnection implements RunnableTask<FetchOutpu
     @PluginProperty(group = "processing")
     private Property<List<MetadataField>> returnMetadata;
 
-    @Schema(title = "Return object vectors", description = "Adds `vector` (default vector) and `vectors` (named vectors) to each row.")
+    @Schema(title = "Return object vectors", description = "Adds `vector` (default vector) and `vectors` (named vectors) to each row; with `targetVector`, only that vector.")
     @Builder.Default
     @PluginProperty(group = "processing")
     private Property<Boolean> includeVector = Property.ofValue(false);
@@ -391,6 +426,9 @@ public class Query extends WeaviateConnection implements RunnableTask<FetchOutpu
                 );
             }
             boolean hasQuery = query != null && !query.isBlank();
+            if (vector != null && vector.stream().anyMatch(java.util.Objects::isNull)) {
+                throw new IllegalArgumentException("`vector` must not contain null values.");
+            }
             boolean hasVector = vector != null && !vector.isEmpty();
             boolean hasQueryProperties = queryProperties != null && !queryProperties.isEmpty();
 
@@ -402,7 +440,7 @@ public class Query extends WeaviateConnection implements RunnableTask<FetchOutpu
                     reject(distance != null, "distance");
                     reject(certainty != null, "certainty");
                     reject(hasQueryProperties, "queryProperties");
-                    reject(targetVector != null, "targetVector");
+                    requireIncludeVectorForTarget();
                 }
                 case BM25 -> {
                     require(hasQuery, "query");
@@ -410,7 +448,7 @@ public class Query extends WeaviateConnection implements RunnableTask<FetchOutpu
                     reject(alpha != null, "alpha");
                     reject(distance != null, "distance");
                     reject(certainty != null, "certainty");
-                    reject(targetVector != null, "targetVector");
+                    requireIncludeVectorForTarget();
                 }
                 case HYBRID -> {
                     require(hasQuery, "query");
@@ -459,6 +497,12 @@ public class Query extends WeaviateConnection implements RunnableTask<FetchOutpu
         private void require(boolean present, String property) {
             if (!present) {
                 throw new IllegalArgumentException("`" + property + "` is required for searchType " + searchType + ".");
+            }
+        }
+
+        private void requireIncludeVectorForTarget() {
+            if (targetVector != null && !includeVector) {
+                throw new IllegalArgumentException("`targetVector` with searchType " + searchType + " only selects the returned vector; set `includeVector: true`.");
             }
         }
 

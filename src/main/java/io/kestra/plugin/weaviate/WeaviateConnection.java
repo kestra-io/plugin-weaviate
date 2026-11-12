@@ -10,6 +10,11 @@ import java.util.Properties;
 import java.util.TreeMap;
 
 import io.kestra.core.exceptions.IllegalVariableEvaluationException;
+import io.kestra.core.http.HttpRequest;
+import io.kestra.core.http.client.HttpClient;
+import io.kestra.core.http.client.HttpClientException;
+import io.kestra.core.http.client.configurations.HttpConfiguration;
+import io.kestra.core.http.client.configurations.TimeoutConfiguration;
 import io.kestra.core.models.property.Property;
 import io.kestra.core.models.tasks.Task;
 import io.kestra.core.runners.RunContext;
@@ -44,6 +49,45 @@ public abstract class WeaviateConnection extends Task implements WeaviateConnect
     // Headers often carry vectorizer API keys.
     @ToString.Exclude
     private Property<Map<String, String>> headers;
+
+    static final int MAX_ERROR_BODY_CHARS = 2048;
+
+    // Replace with client.collections.createFromJson once client6 ships it (weaviate/java-client#598).
+    protected String restPost(RunContext runContext, String path, String json) throws IllegalVariableEvaluationException, HttpClientException, IOException {
+        var endpoint = Endpoint.parse(
+            runContext.render(url),
+            runContext.render(grpcHost).as(String.class).orElse(null),
+            runContext.render(grpcPort).as(Integer.class).orElse(null)
+        );
+        var request = HttpRequest.builder()
+            .uri(URI.create(endpoint.scheme() + "://" + endpoint.httpHost() + ":" + endpoint.httpPort() + path))
+            .method("POST")
+            .body(HttpRequest.StringRequestBody.builder().contentType("application/json").content(json).build());
+        buildHeaders(runContext.render(headers).asMap(String.class, String.class)).forEach(request::addHeader);
+        var rApiKey = runContext.render(apiKey).as(String.class).orElse(null);
+        if (rApiKey != null) {
+            request.addHeader("Authorization", "Bearer " + rApiKey);
+        }
+
+        var configuration = HttpConfiguration.builder().allowFailed(Property.ofValue(true));
+        runContext.render(requestTimeout).as(Duration.class).ifPresent(timeout -> configuration.timeout(
+            TimeoutConfiguration.builder().connectTimeout(Property.ofValue(timeout)).readIdleTimeout(Property.ofValue(timeout)).build()
+        ));
+
+        try (var http = HttpClient.builder().runContext(runContext).configuration(configuration.build()).build()) {
+            var response = http.request(request.build(), String.class);
+            var status = response.getStatus().getCode();
+            var body = response.getBody() == null ? "" : response.getBody();
+            if (status >= 300) {
+                throw new IllegalStateException("Weaviate answered HTTP " + status + " to POST " + path + ": " + truncate(body, MAX_ERROR_BODY_CHARS));
+            }
+            return body;
+        }
+    }
+
+    static String truncate(String text, int maxChars) {
+        return text.length() <= maxChars ? text : text.substring(0, maxChars) + "... (" + (text.length() - maxChars) + " more characters)";
+    }
 
     // The client holds a gRPC channel, so callers must close it.
     protected WeaviateClient connect(RunContext runContext) throws IllegalVariableEvaluationException {
@@ -145,8 +189,8 @@ public abstract class WeaviateConnection extends Task implements WeaviateConnect
             if (grpcPort != null && (grpcPort < 1 || grpcPort > 65535)) {
                 throw new IllegalArgumentException("`grpcPort` must be between 1 and 65535, got " + grpcPort + ".");
             }
-            int httpPort = uri.getPort() != -1 ? uri.getPort() : scheme.equals("https") ? 443 : 80;
-            boolean cloud = grpcHost == null && grpcPort == null && isWeaviateCloud(host);
+            var httpPort = uri.getPort() != -1 ? uri.getPort() : scheme.equals("https") ? 443 : 80;
+            var cloud = grpcHost == null && grpcPort == null && isWeaviateCloud(host);
 
             return new Endpoint(
                 scheme,

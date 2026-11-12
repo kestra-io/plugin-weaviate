@@ -25,6 +25,8 @@ Infrastructure dependencies (Docker Compose services in `docker-compose-ci.yml`)
 - `weaviate`: HTTP on host port 51525, gRPC on 51526, `QUERY_MAXIMUM_RESULTS=100` to exercise Delete's batching
 - `model2vec`: small text2vec inference container for NEAR_TEXT tests
 
+`docker-compose-dev.yml` (project `kestra-weaviate-dev`) runs Weaviate on 8080/50051 and Kestra on 8081 with `build/libs` mounted as the plugin folder, for trying the plugin by hand. See the README.
+
 Classpath notes:
 
 - `build.gradle` forces protobuf-java 4.x: client6's gRPC stubs need it, but the Kestra platform pins 3.25.x. Keep it at or above the version client6's pom declares (protobuf rejects gencode newer than the runtime).

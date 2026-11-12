@@ -12,6 +12,7 @@ import io.kestra.core.runners.RunContextFactory;
 import io.weaviate.client6.v1.api.WeaviateApiException;
 import io.weaviate.client6.v1.api.collections.CollectionConfig;
 import io.weaviate.client6.v1.api.collections.vectorizers.SelfProvidedVectorizer;
+import io.weaviate.client6.v1.api.collections.vectorizers.Text2VecCohereVectorizer;
 import io.weaviate.client6.v1.api.collections.vectorizers.Text2VecModel2VecVectorizer;
 import jakarta.inject.Inject;
 
@@ -66,6 +67,46 @@ public class SchemaCreateTest extends WeaviateTest {
     }
 
     @Test
+    public void createsConfiguredProperties() throws Exception {
+        RunContext runContext = runContextFactory.of();
+
+        schemaCreate()
+            .fields(
+                Property.ofValue(
+                    Map.of(
+                        "title", "text",
+                        "wordCount", Map.of("type", "int", "indexRangeFilters", true),
+                        "body", Map.of("type", "text", "indexFilterable", false, "description", "Full text")
+                    )
+                )
+            )
+            .build()
+            .run(runContext);
+
+        var properties = config().properties().stream().collect(java.util.stream.Collectors.toMap(p -> p.propertyName(), p -> p));
+        assertThat(properties.get("wordCount").indexRangeFilters(), is(true));
+        assertThat(properties.get("body").indexFilterable(), is(false));
+        assertThat(properties.get("body").description(), is("Full text"));
+        assertThat(properties.get("title").indexFilterable(), is(true));
+    }
+
+    @Test
+    public void createsCohereVectorizedCollection() throws Exception {
+        RunContext runContext = runContextFactory.of();
+
+        schemaCreate()
+            .fields(Property.ofValue(Map.of("title", "text")))
+            .vectorizer(Property.ofValue(SchemaCreate.Vectorizer.TEXT2VEC_COHERE))
+            .vectorizerModel(Property.ofValue("embed-v4.0"))
+            .build()
+            .run(runContext);
+
+        var vectorizer = config().vectors().get("default");
+        assertThat(vectorizer, instanceOf(Text2VecCohereVectorizer.class));
+        assertThat(((Text2VecCohereVectorizer) vectorizer).model(), is("embed-v4.0"));
+    }
+
+    @Test
     public void skipsExistingCollectionWhenAsked() throws Exception {
         RunContext runContext = runContextFactory.of();
         schemaCreate().fields(Property.ofValue(Map.of("title", "text"))).build().run(runContext);
@@ -79,5 +120,27 @@ public class SchemaCreateTest extends WeaviateTest {
             .run(runContext);
         assertThat(output.getSuccess(), is(true));
         assertThat(output.getCreated(), is(false));
+    }
+
+    @Test
+    public void rejectsAnEmptyVectorizePropertiesList() {
+        RunContext runContext = runContextFactory.of();
+
+        var withVectorizer = assertThrows(
+            IllegalArgumentException.class,
+            () -> schemaCreate()
+                .fields(Property.ofValue(Map.of("title", "text")))
+                .vectorizer(Property.ofValue(SchemaCreate.Vectorizer.TEXT2VEC_MODEL2VEC))
+                .vectorizeProperties(Property.ofValue(List.of()))
+                .build()
+                .run(runContext)
+        );
+        assertThat(withVectorizer.getMessage(), containsString("must list at least one property"));
+
+        var withoutVectorizer = assertThrows(
+            IllegalArgumentException.class,
+            () -> schemaCreate().fields(Property.ofValue(Map.of("title", "text"))).vectorizeProperties(Property.ofValue(List.of("title"))).build().run(runContext)
+        );
+        assertThat(withoutVectorizer.getMessage(), containsString("needs a vectorizer"));
     }
 }

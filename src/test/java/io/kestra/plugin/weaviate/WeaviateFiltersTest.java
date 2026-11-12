@@ -182,4 +182,83 @@ class WeaviateFiltersTest {
         assertThat(build(condition("a", Operator.CONTAINS_ANY, List.of(1, 2.5))), notNullValue());
         assertThat(WeaviateFilters.normalize("2024-01-01T00:00:00Z", ValueType.DATE), is(OffsetDateTime.parse("2024-01-01T00:00:00Z")));
     }
+
+    @Test
+    void buildsGroups() {
+        var nested = FilterCondition.builder()
+            .and(
+                List.of(
+                    condition("a", Operator.EQUAL, 1),
+                    FilterCondition.builder().or(List.of(condition("b", Operator.EQUAL, 2), FilterCondition.builder().not(condition("c", Operator.EQUAL, 3)).build())).build()
+                )
+            )
+            .build();
+        var filter = build(nested);
+        assertThat(filter, containsString("a"));
+        assertThat(filter, containsString("c"));
+        assertThat(WeaviateFilters.condition(FilterCondition.builder().not(condition("a", Operator.EQUAL, 1)).build()), notNullValue());
+    }
+
+    @Test
+    void buildsGeoRangeAndPropertyLength() {
+        var geo = FilterCondition.builder()
+            .property("location")
+            .operator(Operator.WITHIN_GEO_RANGE)
+            .value(Map.of("latitude", 52.5, "longitude", "13.4", "distance", 1000))
+            .build();
+        assertThat(WeaviateFilters.condition(geo), notNullValue());
+        assertThat(WeaviateFilters.condition(condition("len(title)", Operator.GREATER_THAN, 10)), notNullValue());
+        assertThat(WeaviateFilters.build(Map.of("len(title)", 3), null, null), notNullValue());
+    }
+
+    @Test
+    void rejectsInvalidGroupsAndGeoRanges() {
+        var both = FilterCondition.builder().property("a").operator(Operator.EQUAL).value(1).not(condition("b", Operator.EQUAL, 2)).build();
+        assertThat(assertThrows(IllegalArgumentException.class, () -> build(both)).getMessage(), containsString("exactly one of `and`, `or` and `not`"));
+
+        var empty = FilterCondition.builder().and(List.of()).build();
+        assertThat(assertThrows(IllegalArgumentException.class, () -> build(empty)).getMessage(), containsString("`and` needs at least one condition"));
+
+        var badChild = FilterCondition.builder().or(List.of(condition("a", Operator.EQUAL, 1), FilterCondition.builder().property("b").build())).build();
+        assertThat(assertThrows(IllegalArgumentException.class, () -> build(badChild)).getMessage(), containsString("in `or[1]`: `operator` is required"));
+
+        var notMap = condition("location", Operator.WITHIN_GEO_RANGE, "Berlin");
+        assertThat(assertThrows(IllegalArgumentException.class, () -> build(notMap)).getMessage(), containsString("needs a map"));
+
+        var missing = condition("location", Operator.WITHIN_GEO_RANGE, Map.of("latitude", 1, "longitude", 2));
+        assertThat(assertThrows(IllegalArgumentException.class, () -> build(missing)).getMessage(), containsString("number for `distance`"));
+    }
+
+    @Test
+    void simpleMapUsesEqualOnIdAndTimestamps() {
+        var id = "0b9e8a4a-3b1c-4c1e-9f7a-1c2d3e4f5a6b";
+
+        assertThat(WeaviateFilters.build(Map.of("_id", id), null, null).toString(), is("Filter(_id Equal " + id + ")"));
+        assertThat(WeaviateFilters.build(Map.of("_creationTimeUnix", "2024-01-01T00:00:00Z"), null, null).toString(), containsString("Equal"));
+        assertThat(WeaviateFilters.build(Map.of("_lastUpdateTimeUnix", "2024-01-01T00:00:00Z"), null, null).toString(), containsString("Equal"));
+    }
+
+    @Test
+    void rejectsNullListElements() {
+        var structured = assertThrows(IllegalArgumentException.class, () -> build(condition("tags", Operator.CONTAINS_ANY, java.util.Arrays.asList("a", null))));
+        assertThat(structured.getMessage(), allOf(containsString("filters[0]"), containsString("must not be null")));
+
+        var simple = assertThrows(IllegalArgumentException.class, () -> WeaviateFilters.build(Map.of("tags", java.util.Arrays.asList((Object) null)), null, null));
+        assertThat(simple.getMessage(), allOf(containsString("'tags'"), containsString("must not be null")));
+    }
+
+    @Test
+    void rejectsGeoRangesOutsideTheGlobe() {
+        for (var bad : List.<Map<String, Object>> of(
+            Map.of("latitude", 91, "longitude", 0, "distance", 10),
+            Map.of("latitude", 0, "longitude", -181, "distance", 10),
+            Map.of("latitude", 0, "longitude", 0, "distance", -1),
+            Map.of("latitude", "NaN", "longitude", 0, "distance", 10),
+            Map.of("latitude", 0, "longitude", "Infinity", "distance", 10)
+        )) {
+            assertThrows(IllegalArgumentException.class, () -> WeaviateFilters.condition(condition("location", Operator.WITHIN_GEO_RANGE, bad)), bad.toString());
+        }
+        // Not build(): client6's Filter.toString() fails on geo ranges (weaviate/java-client#638).
+        assertThat(WeaviateFilters.condition(condition("location", Operator.WITHIN_GEO_RANGE, Map.of("latitude", -90, "longitude", 180, "distance", 0))), notNullValue());
+    }
 }

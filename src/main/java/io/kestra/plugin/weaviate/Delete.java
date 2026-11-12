@@ -93,7 +93,9 @@ public class Delete extends WeaviateConnection implements RunnableTask<Delete.Ou
 
     @Schema(
         title = "Simple property filter",
-        description = "Map of property to value, combined with AND. Text values use LIKE (so `*` wildcards work); other values use EQUAL."
+        description = """
+            Map of property to value, combined with AND. Text values use LIKE (so `*` wildcards work); other values, and `_id` and the timestamp properties, use EQUAL.
+            Templated values arrive as text: for a templated number, boolean or date, use `filters` with `valueType`."""
     )
     @PluginProperty(group = "processing")
     private Property<Map<String, Object>> filter;
@@ -171,6 +173,7 @@ public class Delete extends WeaviateConnection implements RunnableTask<Delete.Ou
             long failed = 0;
             List<String> ids = new ArrayList<>();
             boolean truncated = false;
+            var finished = false;
             for (int round = 0; round < MAX_DELETE_ROUNDS; round++) {
                 var response = collection.data.deleteMany(deleteFilter, o -> o.verbose(true));
                 deleted += response.successful();
@@ -187,8 +190,12 @@ public class Delete extends WeaviateConnection implements RunnableTask<Delete.Ou
                     }
                 }
                 if (response.matches() == 0 || response.successful() == 0) {
+                    finished = true;
                     break;
                 }
+            }
+            if (!finished) {
+                runContext.logger().warn("Stopped after {} delete rounds; objects matching the filter may remain in '{}'", MAX_DELETE_ROUNDS, rClassName);
             }
 
             runContext.metric(Counter.of("deleted", deleted));
@@ -205,7 +212,7 @@ public class Delete extends WeaviateConnection implements RunnableTask<Delete.Ou
 
             return Output.builder()
                 .className(rClassName)
-                .success(failed == 0)
+                .success(failed == 0 && finished)
                 .deletedCount(deleted)
                 .ids(ids)
                 .idsTruncated(truncated)
@@ -241,7 +248,10 @@ public class Delete extends WeaviateConnection implements RunnableTask<Delete.Ou
         @Schema(title = "Collection where objects were deleted")
         private String className;
 
-        @Schema(title = "Whether every matching object was deleted")
+        @Schema(
+            title = "Whether every matching object was deleted",
+            description = "False when deletions were rejected, when `objectId` does not exist, or when objects may remain after " + MAX_DELETE_ROUNDS + " delete rounds."
+        )
         private Boolean success;
 
         @Schema(title = "Number of deleted objects")
